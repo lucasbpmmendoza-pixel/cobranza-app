@@ -213,7 +213,7 @@
 				}
 
 				const response = await authFetch(
-					`/api/conceptos?search=${encodeURIComponent(busquedaConceptoGuardado)}&limit=20&organizacionId=${organizacionId}&clienteId=${clienteSeleccionado.id}`
+					`/api/conceptos?search=${encodeURIComponent(busquedaConceptoGuardado)}&limit=20&organizacionId=${organizacionId}&clienteId=${clienteSeleccionado?.id || ''}`
 				);
 
 				if (response.ok) {

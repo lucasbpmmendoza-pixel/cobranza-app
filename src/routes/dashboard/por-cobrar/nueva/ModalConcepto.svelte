@@ -240,7 +240,7 @@
 		}
 
 		const nuevoConcepto = {
-			id: concepto?.id || crypto.randomUUID(),
+			id: concepto?.id,
 			nombre,
 			descripcion,
 			productoServicio,
