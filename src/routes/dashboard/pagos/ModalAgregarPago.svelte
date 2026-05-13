@@ -333,7 +333,7 @@
            legal_name: clienteSeleccionado.razonSocial,
            email: clienteSeleccionado.email || clienteSeleccionado.correo,
            tax_id: clienteSeleccionado.rfc,
-           tax_system: String((clienteSeleccionado.regimenFiscal || '616').toString().split(' - ')[0].trim()),
+           tax_system: String(clienteSeleccionado.regimenFiscal || '616'),
            address: {
              zip: clienteSeleccionado.codigoPostal || '00000'
            }

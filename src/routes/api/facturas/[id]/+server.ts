@@ -221,7 +221,7 @@ export const GET: RequestHandler = async (event) => {
         correo: row.ClienteCorreo,
         telefono: row.ClienteTelefono,
         codigoPostal: row.ClienteCodigoPostal,
-        regimenFiscal: row.ClienteRegimenFiscalCodigo ? `${row.ClienteRegimenFiscalCodigo} - ${row.ClienteRegimenFiscalDescripcion}` : null
+        regimenFiscal: row.ClienteRegimenFiscalCodigo ?? null
       },
       estado: {
         id: row.estado_factura_id,

@@ -27,7 +27,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
 					c.RazonSocial,
 					c.RFC,
 					c.RegimenFiscalId,
-					r.Descripcion as RegimenFiscal,
+				r.Codigo as RegimenFiscal,
 					c.CondicionesPago,
 					c.CorreoPrincipal,
 					c.PaisId,
