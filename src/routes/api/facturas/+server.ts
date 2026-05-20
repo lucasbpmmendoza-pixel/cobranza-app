@@ -288,7 +288,7 @@ export const GET: RequestHandler = async (event) => {
         email: factura.ClienteEmail,
         telefono: factura.ClienteTelefono,
         codigoPostal: factura.ClienteCodigoPostal,
-        regimenFiscal: factura.ClienteRegimenFiscalCodigo || factura.ClienteRegimenFiscalDescripcion
+        regimenFiscal: factura.ClienteRegimenFiscalCodigo ?? null
       },
       estado: {
         id: estadoId,
