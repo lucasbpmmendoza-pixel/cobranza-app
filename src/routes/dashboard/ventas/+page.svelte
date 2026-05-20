@@ -37,7 +37,27 @@
   // Estado de filtros
   let filtroTexto = '';
   let filtroEstado = '';
+  let filtroPeriodo = '';
   let searchDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function getRangoFechas(periodo: string): { fechaInicio?: string; fechaFin?: string } {
+    const hoy = new Date();
+    const formato = (d: Date) => d.toISOString().split('T')[0];
+    if (periodo === 'hoy') {
+      return { fechaInicio: formato(hoy), fechaFin: formato(hoy) };
+    } else if (periodo === 'semana') {
+      const inicio = new Date(hoy);
+      inicio.setDate(hoy.getDate() - hoy.getDay());
+      return { fechaInicio: formato(inicio), fechaFin: formato(hoy) };
+    } else if (periodo === 'mes') {
+      const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+      return { fechaInicio: formato(inicio), fechaFin: formato(hoy) };
+    } else if (periodo === 'trimestre') {
+      const inicio = new Date(hoy.getFullYear(), Math.floor(hoy.getMonth() / 3) * 3, 1);
+      return { fechaInicio: formato(inicio), fechaFin: formato(hoy) };
+    }
+    return {};
+  }
   let filtrosEstadoCheckbox = {
     pagada: false,
     pendiente: false,
@@ -293,6 +313,11 @@
         params.append('estado', filtroEstado);
       }
 
+      // Agregar filtro de periodo
+      const rango = getRangoFechas(filtroPeriodo);
+      if (rango.fechaInicio) params.append('fechaInicio', rango.fechaInicio);
+      if (rango.fechaFin) params.append('fechaFin', rango.fechaFin);
+
       // Agregar filtros de checkbox - Estados de factura
       const estadosSeleccionados = [];
       if (filtrosEstadoCheckbox.pagada) estadosSeleccionados.push('3');
@@ -415,6 +440,7 @@
   function limpiarFiltros() {
     filtroTexto = '';
     filtroEstado = '';
+    filtroPeriodo = '';
     filtrosEstadoCheckbox = {
       pagada: false,
       pendiente: false,
@@ -526,6 +552,19 @@
             class="pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-full transition-all duration-200"
           />
         </div>
+
+        <!-- Filtro Periodo -->
+        <select
+          bind:value={filtroPeriodo}
+          on:change={() => { paginacion.page = 1; cargarVentas(); }}
+          class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-[140px] transition-all duration-200"
+        >
+          <option value="">Periodo</option>
+          <option value="hoy">Hoy</option>
+          <option value="semana">Esta semana</option>
+          <option value="mes">Este mes</option>
+          <option value="trimestre">Este trimestre</option>
+        </select>
 
         <!-- Botón Filtros -->
         <Button variant="secondary" size="md" on:click={toggleFiltros}>

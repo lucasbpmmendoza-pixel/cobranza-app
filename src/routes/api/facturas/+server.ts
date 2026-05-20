@@ -70,6 +70,10 @@ export const GET: RequestHandler = async (event) => {
     whereConditions.push('c.OrganizacionId = ?');
     queryParams.push(organizacionId);
 
+    // FILTRO PERMANENTE: Solo datos desde Diciembre 2025
+    whereConditions.push('f.FechaEmision >= ?');
+    queryParams.push('2025-12-01');
+
     // Agregar filtros dinámicamente
     if (cliente) {
       whereConditions.push(`(
@@ -171,7 +175,9 @@ export const GET: RequestHandler = async (event) => {
         ef.codigo as EstadoCodigo,
         ef.id as EstadoId,
         pc.codigo as PrioridadCodigo,
-        pc.id as PrioridadId
+        pc.id as PrioridadId,
+        (SELECT TOP 1 Nombre FROM ConceptosFactura WHERE FacturaId = f.Id ORDER BY Id) as PrimerConceptoNombre,
+        (SELECT TOP 1 ClaveProdServ FROM ConceptosFactura WHERE FacturaId = f.Id ORDER BY Id) as PrimerConceptoClave
       FROM Facturas f
       INNER JOIN Clientes c ON f.ClienteId = c.Id
       LEFT JOIN Regimen r ON c.RegimenFiscalId = r.ID_Regimen
@@ -291,7 +297,11 @@ export const GET: RequestHandler = async (event) => {
       prioridad: {
         id: factura.PrioridadId,
         codigo: factura.PrioridadCodigo
-      }
+      },
+      primerConcepto: factura.PrimerConceptoNombre ? {
+        nombre: factura.PrimerConceptoNombre,
+        claveProdServ: factura.PrimerConceptoClave || null
+      } : null
     };
     });
 
@@ -698,6 +708,79 @@ export const POST: RequestHandler = async (event) => {
       error: 'Error interno del servidor',
       details: error instanceof Error ? error.message : 'Error desconocido',
       stack: error instanceof Error ? error.stack : undefined
+    }, { status: 500 });
+  }
+};
+
+export const DELETE: RequestHandler = async (event) => {
+  const user = getUserFromRequest(event);
+  if (!user) {
+    return unauthorizedResponse('Token de autenticación requerido');
+  }
+
+  const { request } = event;
+  try {
+    const { ids, organizacionId } = await request.json();
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return json({ success: false, error: 'Se requiere un array de ids' }, { status: 400 });
+    }
+    if (!organizacionId) {
+      return json({ success: false, error: 'organizacionId es requerido' }, { status: 400 });
+    }
+
+    const pool = await getConnection();
+
+    // Verificar que todas las facturas pertenezcan a la organización y estén canceladas (estado 6)
+    const placeholders = ids.map((_, i) => `@id${i}`).join(',');
+    const verificarRequest = pool.request().input('organizacionId', organizacionId);
+    ids.forEach((id: number, i: number) => verificarRequest.input(`id${i}`, id));
+
+    const verificar = await verificarRequest.query(`
+      SELECT f.Id
+      FROM Facturas f
+      INNER JOIN Clientes c ON f.ClienteId = c.Id
+      WHERE f.Id IN (${placeholders})
+        AND c.OrganizacionId = @organizacionId
+        AND f.estado_factura_id = 6
+    `);
+
+    if (verificar.recordset.length !== ids.length) {
+      return json({
+        success: false,
+        error: 'Solo se pueden eliminar facturas canceladas que pertenezcan a su organización'
+      }, { status: 403 });
+    }
+
+    // Eliminar registros relacionados y luego las facturas en transacción
+    const transaction = new sql.Transaction(pool);
+    await transaction.begin();
+
+    try {
+      const deleteRequest = (q: string) => {
+        const req = new sql.Request(transaction);
+        ids.forEach((id: number, i: number) => req.input(`id${i}`, id));
+        return req.query(q);
+      };
+
+      // Eliminar dependencias primero
+      await deleteRequest(`DELETE FROM Recordatorios WHERE FacturaId IN (${placeholders})`);
+      await deleteRequest(`DELETE FROM Pagos WHERE FacturaId IN (${placeholders})`);
+      await deleteRequest(`DELETE FROM ConceptosFactura WHERE FacturaId IN (${placeholders})`);
+      await deleteRequest(`DELETE FROM Facturas WHERE Id IN (${placeholders})`);
+
+      await transaction.commit();
+
+      return json({ success: true, eliminadas: ids.length });
+    } catch (err) {
+      await transaction.rollback();
+      throw err;
+    }
+  } catch (error) {
+    console.error('Error al eliminar facturas:', error);
+    return json({
+      success: false,
+      error: error instanceof Error ? error.message : 'Error al eliminar facturas'
     }, { status: 500 });
   }
 };

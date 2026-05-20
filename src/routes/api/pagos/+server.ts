@@ -7,6 +7,8 @@ export const GET: RequestHandler = async ({ url }) => {
     const page = parseInt(url.searchParams.get('page') || '1');
     const limit = parseInt(url.searchParams.get('limit') || '10');
     const cliente = url.searchParams.get('cliente') || '';
+    const fechaInicio = url.searchParams.get('fechaInicio') || '';
+    const fechaFin = url.searchParams.get('fechaFin') || '';
     const ordenCampo = url.searchParams.get('ordenCampo') || 'fechaPago';
     const ordenDireccion = url.searchParams.get('ordenDireccion') || 'DESC';
 
@@ -24,7 +26,7 @@ export const GET: RequestHandler = async ({ url }) => {
     const offset = (page - 1) * limit;
 
     // Construir WHERE clause con filtro obligatorio de organización
-    let whereClause = 'WHERE cl.OrganizacionId = @organizacionId';
+    let whereClause = 'WHERE cl.OrganizacionId = @organizacionId AND p.FechaPago >= @fechaBase';
     if (cliente) {
       whereClause += `
         AND (
@@ -37,6 +39,12 @@ export const GET: RequestHandler = async ({ url }) => {
           CAST(p.Id AS VARCHAR) LIKE @cliente
         )
       `;
+    }
+    if (fechaInicio) {
+      whereClause += ' AND p.FechaPago >= @fechaInicio';
+    }
+    if (fechaFin) {
+      whereClause += ' AND p.FechaPago <= @fechaFin';
     }
 
     // Query principal con JOINs
@@ -83,11 +91,14 @@ export const GET: RequestHandler = async ({ url }) => {
     `;
 
     const request = pool.request()
-      .input('organizacionId', organizacionId);
+      .input('organizacionId', organizacionId)
+      .input('fechaBase', '2025-12-01');
 
     if (cliente) {
       request.input('cliente', `%${cliente}%`);
     }
+    if (fechaInicio) request.input('fechaInicio', fechaInicio);
+    if (fechaFin) request.input('fechaFin', fechaFin);
 
     request.input('offset', offset);
     request.input('limit', limit);
@@ -96,11 +107,14 @@ export const GET: RequestHandler = async ({ url }) => {
 
     // Para contar, crear nuevo request
     const countRequest = pool.request()
-      .input('organizacionId', organizacionId);
+      .input('organizacionId', organizacionId)
+      .input('fechaBase', '2025-12-01');
 
     if (cliente) {
       countRequest.input('cliente', `%${cliente}%`);
     }
+    if (fechaInicio) countRequest.input('fechaInicio', fechaInicio);
+    if (fechaFin) countRequest.input('fechaFin', fechaFin);
 
     const countResult = await countRequest.query(countQuery);
 

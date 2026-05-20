@@ -211,6 +211,56 @@
     }
   }
 
+  async function visualizarPDF() {
+    if (!factura) return;
+    try {
+      const organizacionId = sessionStorage.getItem('organizacionActualId');
+      if (!organizacionId) {
+        mostrarNotif('error', 'Error', 'No se encontró la información de la organización');
+        return;
+      }
+      const response = await authFetch(`/api/facturas/${facturaId}/pdf?organizacionId=${organizacionId}`);
+      if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${factura.uuid}.pdf`;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Error al visualizar PDF:', err);
+      mostrarNotif('error', 'Error', 'Error al visualizar el PDF');
+    }
+  }
+
+  async function descargarXML() {
+    if (!factura) return;
+    try {
+      const organizacionId = sessionStorage.getItem('organizacionActualId');
+      if (!organizacionId) {
+        mostrarNotif('error', 'Error', 'No se encontró la información de la organización');
+        return;
+      }
+      const response = await authFetch(`/api/facturas/${facturaId}/xml?organizacionId=${organizacionId}`);
+      if (!response.ok) throw new Error(`Error ${response.status}: ${response.statusText}`);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${factura.uuid}.xml`;
+      a.click();
+      URL.revokeObjectURL(url);
+      mostrarNotif('exito', 'Descarga exitosa', `El archivo XML de la factura ${factura.numeroFactura} se ha descargado correctamente`);
+    } catch (err) {
+      console.error('Error al descargar XML:', err);
+      mostrarNotif('error', 'Error', 'Error al descargar el XML');
+    }
+  }
+
   onMount(() => {
     cargarFactura();
   });
@@ -265,6 +315,16 @@
           </div>
 
           <div class="flex gap-3">
+            {#if factura.timbrado}
+              <Button variant="danger" size="md" on:click={visualizarPDF}>
+                <Download class="w-4 h-4" />
+                PDF
+              </Button>
+              <Button variant="secondary" size="md" on:click={descargarXML}>
+                <Download class="w-4 h-4" />
+                XML
+              </Button>
+            {/if}
             <Button variant="success" size="md" on:click={agregarPago}>
               AGREGAR PAGO
             </Button>

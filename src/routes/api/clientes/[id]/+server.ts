@@ -118,18 +118,64 @@ export const PUT: RequestHandler = async ({ params, request }) => {
 };
 
 // DELETE - Eliminar cliente
-export const DELETE: RequestHandler = async ({ params }) => {
+export const DELETE: RequestHandler = async ({ params, url }) => {
 	try {
 		const { id } = params;
+		const organizacionId = url.searchParams.get('organizacionId');
 		const pool = await getConnection();
 
-		await pool
-			.request()
-			.input('Id', sql.Int, parseInt(id))
-			.query(`DELETE FROM Clientes WHERE Id = @Id`);
+		// Verificar que el cliente pertenece a la organización
+		if (organizacionId) {
+			const check = await pool
+				.request()
+				.input('Id', sql.Int, parseInt(id))
+				.input('OrganizacionId', sql.Int, parseInt(organizacionId))
+				.query(`SELECT Id FROM Clientes WHERE Id = @Id AND OrganizacionId = @OrganizacionId`);
 
-		return json({ message: 'Cliente eliminado correctamente' });
+			if (check.recordset.length === 0) {
+				return json({ error: 'Cliente no encontrado o no pertenece a su organización' }, { status: 404 });
+			}
+		}
+
+		const transaction = new sql.Transaction(pool);
+		await transaction.begin();
+
+		try {
+			const req = () => new sql.Request(transaction).input('ClienteId', sql.Int, parseInt(id));
+
+			// Obtener IDs de facturas del cliente
+			const facturas = await req().query(`SELECT Id FROM Facturas WHERE ClienteId = @ClienteId`);
+			const facturaIds = facturas.recordset.map((f: any) => f.Id);
+
+			if (facturaIds.length > 0) {
+				const placeholders = facturaIds.map((_: any, i: number) => `@fid${i}`).join(',');
+
+				const delReq = (q: string) => {
+					const r = new sql.Request(transaction);
+					facturaIds.forEach((fid: number, i: number) => r.input(`fid${i}`, sql.Int, fid));
+					return r.query(q);
+				};
+
+				await delReq(`DELETE FROM Recordatorios WHERE FacturaId IN (${placeholders})`);
+				await delReq(`DELETE FROM Pagos WHERE FacturaId IN (${placeholders})`);
+				await delReq(`DELETE FROM ConceptosFactura WHERE FacturaId IN (${placeholders})`);
+				await delReq(`DELETE FROM Facturas WHERE Id IN (${placeholders})`);
+			}
+
+			// Eliminar agentes asignados al cliente si existe la tabla
+			await req().query(`DELETE FROM ClienteAgentes WHERE ClienteId = @ClienteId`).catch(() => {});
+
+			// Eliminar el cliente
+			await req().query(`DELETE FROM Clientes WHERE Id = @ClienteId`);
+
+			await transaction.commit();
+			return json({ message: 'Cliente eliminado correctamente' });
+		} catch (err) {
+			await transaction.rollback();
+			throw err;
+		}
 	} catch (err) {
-		return json({ error: 'Error en el servidor' }, { status: 500 });
+		console.error('Error al eliminar cliente:', err);
+		return json({ error: err instanceof Error ? err.message : 'Error en el servidor' }, { status: 500 });
 	}
 };

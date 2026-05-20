@@ -39,7 +39,27 @@
 
   // Estado de filtros
   let filtroTexto = '';
+  let filtroPeriodo = '';
   let searchDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function getRangoFechas(periodo: string): { fechaInicio?: string; fechaFin?: string } {
+    const hoy = new Date();
+    const formato = (d: Date) => d.toISOString().split('T')[0];
+    if (periodo === 'hoy') {
+      return { fechaInicio: formato(hoy), fechaFin: formato(hoy) };
+    } else if (periodo === 'semana') {
+      const inicio = new Date(hoy);
+      inicio.setDate(hoy.getDate() - hoy.getDay());
+      return { fechaInicio: formato(inicio), fechaFin: formato(hoy) };
+    } else if (periodo === 'mes') {
+      const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+      return { fechaInicio: formato(inicio), fechaFin: formato(hoy) };
+    } else if (periodo === 'trimestre') {
+      const inicio = new Date(hoy.getFullYear(), Math.floor(hoy.getMonth() / 3) * 3, 1);
+      return { fechaInicio: formato(inicio), fechaFin: formato(hoy) };
+    }
+    return {};
+  }
 
   // Filtros de checkbox
   let filtrosEstadoCheckbox = {
@@ -57,9 +77,7 @@
   let ordenDireccion: 'ASC' | 'DESC' = 'DESC';
 
   // Estado de modales
-  let modalPagoAbierto = false;
   let modalAgregarPagoAbierto = false;
-  let pagoSeleccionado: Pago | null = null;
 
   // Estado de menú dropdown
   let menuAbiertoId: number | null = null;
@@ -104,7 +122,8 @@
         limit: paginacion.limit.toString(),
         ordenCampo,
         ordenDireccion,
-        ...(filtroTexto && { cliente: filtroTexto })
+        ...(filtroTexto && { cliente: filtroTexto }),
+        ...getRangoFechas(filtroPeriodo)
       });
 
       // Agregar filtros de estado seleccionados
@@ -217,6 +236,7 @@
    */
   function limpiarFiltros() {
     filtroTexto = '';
+    filtroPeriodo = '';
     filtrosEstadoCheckbox = {
       pendiente: false,
       aplicado: false,
@@ -303,13 +323,7 @@
   /**
    * Abre modal de visualización de pago
    */
-  function abrirModalPago(pago: Pago) {
-    sessionStorage.setItem('pagos_pagina', paginacion.page.toString());
-    pagoSeleccionado = pago;
-    // TODO: Implementar modal de detalle de pago
-    console.log('Ver detalle de pago:', pago);
-    cerrarMenu();
-  }
+
 
   /**
    * Elimina un pago
@@ -524,6 +538,19 @@
           />
         </div>
 
+        <!-- Filtro Periodo -->
+        <select
+          bind:value={filtroPeriodo}
+          on:change={() => { paginacion.page = 1; cargarPagos(); }}
+          class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-[140px] transition-all duration-200"
+        >
+          <option value="">Periodo</option>
+          <option value="hoy">Hoy</option>
+          <option value="semana">Esta semana</option>
+          <option value="mes">Este mes</option>
+          <option value="trimestre">Este trimestre</option>
+        </select>
+
         <!-- Botón Filtros -->
         <Button variant="secondary" size="md" on:click={toggleFiltros}>
           <Filter class="w-4 h-4" />
@@ -531,7 +558,7 @@
         </Button>
 
         <!-- Botón Limpiar Filtros -->
-        {#if filtrosActivos > 0 || filtroTexto}
+        {#if filtrosActivos > 0 || filtroTexto || filtroPeriodo}
           <Button variant="outline" size="md" on:click={limpiarFiltros}>
             <XCircle class="w-4 h-4" />
             Limpiar
@@ -688,17 +715,21 @@
               <tr class="hover:bg-gray-50">
                 <!-- ID -->
                 <td class="px-6 py-4">
-                  <button
-                    on:click={() => abrirModalPago(pago)}
-                    class="text-sm font-medium text-blue-600 hover:text-blue-800 cursor-pointer bg-transparent border-none p-0"
-                  >
-                    #{pago.id}
-                  </button>
+                  <span class="text-sm font-medium text-gray-600">#{pago.id}</span>
                 </td>
 
                 <!-- Factura -->
                 <td class="px-6 py-4 whitespace-nowrap">
-                  <div class="text-sm text-gray-900">{pago.factura?.numero_factura || 'N/A'}</div>
+                  {#if pago.facturaId && pago.factura?.numero_factura}
+                    <button
+                      on:click={() => { guardarEstadoBusqueda(); goto(`/dashboard/por-cobrar/${pago.facturaId}`); }}
+                      class="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline cursor-pointer bg-transparent border-none p-0"
+                    >
+                      {pago.factura.numero_factura}
+                    </button>
+                  {:else}
+                    <div class="text-sm text-gray-900">{pago.factura?.numero_factura || 'N/A'}</div>
+                  {/if}
                 </td>
 
                 <!-- Cliente -->
@@ -733,11 +764,11 @@
                   {#if menuAbiertoId === pago.id}
                     <div class="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-gray-200 z-50">
                       <button
-                        on:click={() => abrirModalPago(pago)}
+                        on:click={() => { guardarEstadoBusqueda(); goto(`/dashboard/por-cobrar/${pago.facturaId}`); cerrarMenu(); }}
                         class="w-full px-4 py-3 text-left text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center gap-2"
                       >
                         <Eye class="w-4 h-4" />
-                        Ver Detalle
+                        Ver Factura
                       </button>
                       <button
                         on:click={() => {
@@ -829,3 +860,5 @@
     cargarPagos();
   }}
 />
+
+

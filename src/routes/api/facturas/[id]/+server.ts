@@ -234,9 +234,26 @@ export const GET: RequestHandler = async (event) => {
       conceptos
     };
 
+    // Obtener IDs de la factura anterior y siguiente (misma organización)
+    const navQuery = `
+      SELECT
+        (SELECT TOP 1 f2.Id FROM Facturas f2 INNER JOIN Clientes c2 ON f2.ClienteId = c2.Id
+          WHERE c2.OrganizacionId = @OrganizacionId AND f2.Id < @FacturaId ORDER BY f2.Id DESC) as PrevId,
+        (SELECT TOP 1 f3.Id FROM Facturas f3 INNER JOIN Clientes c3 ON f3.ClienteId = c3.Id
+          WHERE c3.OrganizacionId = @OrganizacionId AND f3.Id > @FacturaId ORDER BY f3.Id ASC) as NextId
+    `;
+    const navResult = await pool.request()
+      .input('FacturaId', sql.Int, parseInt(id))
+      .input('OrganizacionId', sql.Int, parseInt(organizacionId))
+      .query(navQuery);
+    const prevId: number | null = navResult.recordset[0]?.PrevId ?? null;
+    const nextId: number | null = navResult.recordset[0]?.NextId ?? null;
+
     return json({
       success: true,
-      factura
+      factura,
+      prevId,
+      nextId
     });
 
   } catch (error) {

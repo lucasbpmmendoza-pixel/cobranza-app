@@ -227,6 +227,8 @@ export async function eliminarClienteAPI(clienteId: number, apiEndpoint: string)
 		throw new Error(`ID de cliente inválido: ${clienteId}`);
 	}
 
+	const organizacionId = sessionStorage.getItem('organizacionActualId');
+
 	// PASO 1: Eliminar todas las asignaciones de agente primero
 	try {
 		await authFetch('/api/clientes/remover-agente', {
@@ -240,7 +242,11 @@ export async function eliminarClienteAPI(clienteId: number, apiEndpoint: string)
 	}
 
 	// PASO 2: Eliminar cliente del endpoint LOCAL
-	const response = await authFetch(`/api/clientes/${clienteId}`, {
+	const url = organizacionId
+		? `/api/clientes/${clienteId}?organizacionId=${organizacionId}`
+		: `/api/clientes/${clienteId}`;
+
+	const response = await authFetch(url, {
 		method: 'DELETE'
 	});
 

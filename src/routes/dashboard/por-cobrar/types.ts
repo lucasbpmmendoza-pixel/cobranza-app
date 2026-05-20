@@ -93,6 +93,7 @@ export interface Factura {
   usuarioCreadorNombre?: string;
   usuarioCreadorApellido?: string;
   conceptos?: ConceptoFactura[];
+  primerConcepto?: { nombre: string; claveProdServ?: string | null } | null;
   pagos?: PagoResumen[];
   createdAt: string;
 }

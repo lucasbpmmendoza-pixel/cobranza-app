@@ -9,7 +9,6 @@
     Search,
     Filter,
     Plus,
-    Eye,
     FileText,
     CreditCard,
     Clock,
@@ -46,7 +45,79 @@
   let filtroEstado = '';
   let filtroPrioridad = '';
   let filtroVencimiento = '';
+  let filtroPeriodo = '';
   let searchDebounceTimeout: ReturnType<typeof setTimeout> | null = null;
+
+  function getRangoFechas(periodo: string): { fechaInicio?: string; fechaFin?: string } {
+    const hoy = new Date();
+    const formato = (d: Date) => d.toISOString().split('T')[0];
+    if (periodo === 'hoy') {
+      return { fechaInicio: formato(hoy), fechaFin: formato(hoy) };
+    } else if (periodo === 'semana') {
+      const inicio = new Date(hoy);
+      inicio.setDate(hoy.getDate() - hoy.getDay());
+      return { fechaInicio: formato(inicio), fechaFin: formato(hoy) };
+    } else if (periodo === 'mes') {
+      const inicio = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+      return { fechaInicio: formato(inicio), fechaFin: formato(hoy) };
+    } else if (periodo === 'trimestre') {
+      const inicio = new Date(hoy.getFullYear(), Math.floor(hoy.getMonth() / 3) * 3, 1);
+      return { fechaInicio: formato(inicio), fechaFin: formato(hoy) };
+    }
+    return {};
+  }
+
+  // Selección masiva
+  let facturasSeleccionadas: Set<number> = new Set();
+  let seleccionandoModo = false;
+
+  $: facturasCanceladas = facturas.filter(f => f.estado_factura_id === 6);
+  $: todasCanceladasSeleccionadas = facturasCanceladas.length > 0 && facturasCanceladas.every(f => facturasSeleccionadas.has(f.id));
+
+  function toggleSeleccionModo() {
+    seleccionandoModo = !seleccionandoModo;
+    if (!seleccionandoModo) facturasSeleccionadas = new Set();
+  }
+
+  function toggleSeleccionFactura(id: number) {
+    const nueva = new Set(facturasSeleccionadas);
+    nueva.has(id) ? nueva.delete(id) : nueva.add(id);
+    facturasSeleccionadas = nueva;
+  }
+
+  function toggleSeleccionarTodas() {
+    if (todasCanceladasSeleccionadas) {
+      facturasSeleccionadas = new Set();
+    } else {
+      facturasSeleccionadas = new Set(facturasCanceladas.map(f => f.id));
+    }
+  }
+
+  async function eliminarSeleccionadas() {
+    if (facturasSeleccionadas.size === 0) return;
+
+    const confirmado = confirm(`¿Eliminar ${facturasSeleccionadas.size} factura(s) cancelada(s)? Esta acción no se puede deshacer.`);
+    if (!confirmado) return;
+
+    const organizacionId = sessionStorage.getItem('organizacionActualId');
+    try {
+      const response = await authFetch('/api/facturas', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ids: Array.from(facturasSeleccionadas), organizacionId })
+      });
+      const data = await response.json();
+      if (data.success) {
+        facturasSeleccionadas = new Set();
+        seleccionandoModo = false;
+        cargarFacturas();
+      } else {
+        alert('Error: ' + data.error);
+      }
+    } catch {
+      alert('Error al conectar con el servidor');
+    }
+  }
 
   // Filtros de checkbox
   let filtrosEstadoCheckbox = {
@@ -111,9 +182,6 @@
   };
   let cargando = true;
   let error = '';
-
-  // Estadísticas de recordatorios por factura
-  let recordatoriosStats: Record<number, { total: number; vistos: number; noVistos: number }> = {};
 
   // Métricas calculadas dinámicamente
   $: metricas = {
@@ -217,43 +285,8 @@
     cargarFacturas();
   }
 
-  function handleRecordatorioCreado(event: any) {
-    // Recargar las estadísticas de recordatorios
-    if (facturaSeleccionada) {
-      cargarRecordatoriosFactura(facturaSeleccionada.id);
-    }
-  }
-
-  // Función para cargar recordatorios de una factura específica
-  async function cargarRecordatoriosFactura(facturaId: number) {
-    try {
-      const organizacionId = sessionStorage.getItem('organizacionActualId');
-      if (!organizacionId) return;
-
-      const response = await authFetch(`/api/facturas/${facturaId}/recordatorios?organizacionId=${organizacionId}`);
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          recordatoriosStats[facturaId] = {
-            total: data.stats.Total || 0,
-            vistos: data.stats.Vistos || 0,
-            noVistos: data.stats.NoVistos || 0
-          };
-          // Forzar actualización reactiva
-          recordatoriosStats = recordatoriosStats;
-        }
-      }
-    } catch (error) {
-      console.error('Error al cargar recordatorios:', error);
-    }
-  }
-
-  // Función para cargar recordatorios de todas las facturas visibles
-  async function cargarTodosLosRecordatorios() {
-    for (const factura of facturas) {
-      await cargarRecordatoriosFactura(factura.id);
-    }
+  function handleRecordatorioCreado(_event: any) {
+    // Recordatorio creado
   }
 
   // Funciones para el menú dropdown
@@ -303,6 +336,11 @@
         params.append('prioridad', filtroPrioridad);
       }
 
+      // Agregar filtro de periodo
+      const rango = getRangoFechas(filtroPeriodo);
+      if (rango.fechaInicio) params.append('fechaInicio', rango.fechaInicio);
+      if (rango.fechaFin) params.append('fechaFin', rango.fechaFin);
+
       // Agregar filtros de checkbox
       const estadosSeleccionados = [];
       if (filtrosEstadoCheckbox.pagada) estadosSeleccionados.push('3'); // Estado 3 = Pagada
@@ -340,6 +378,7 @@
           diasVencido: f.diasVencido,
           estado_factura_id: f.estado.id,
           prioridad_cobranza_id: f.prioridad.id,
+          primerConcepto: f.primerConcepto || null,
           ultimaGestion: f.ultimaGestion,
           createdAt: f.createdAt
         }));
@@ -357,8 +396,7 @@
           };
         }
 
-        // Cargar estadísticas de recordatorios para las facturas cargadas
-        cargarTodosLosRecordatorios();
+
       } else {
         error = data.error || 'Error al cargar facturas';
       }
@@ -436,6 +474,7 @@
     filtroEstado = '';
     filtroPrioridad = '';
     filtroVencimiento = '';
+    filtroPeriodo = '';
     filtrosEstadoCheckbox = {
       pagada: false,
       vigente: false,
@@ -536,9 +575,14 @@
       <p class="text-sm text-gray-600 mt-1">Impulsa el crecimiento de tu empresa, revisa el estado de tus facturas, envía recordatorios a tus clientes y cobra tus facturas a tiempo.</p>
     </div>
     <div class="flex gap-3">
-      <!-- <Button variant="primary" size="md">
-        IMPORTAR
-      </Button> -->
+      <!-- Botón modo selección -->
+      <Button
+        variant={seleccionandoModo ? 'outline' : 'secondary'}
+        size="md"
+        on:click={toggleSeleccionModo}
+      >
+        {seleccionandoModo ? 'Cancelar selección' : 'Eliminar canceladas'}
+      </Button>
       <Button
         variant="primary"
         size="md"
@@ -551,6 +595,32 @@
 
   <!-- Filtros y búsqueda -->
   <div class="bg-white rounded-xl shadow-sm border">
+
+    <!-- Barra de acciones masivas -->
+    {#if seleccionandoModo}
+      <div class="p-3 bg-red-50 border-b border-red-200 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <input
+            type="checkbox"
+            checked={todasCanceladasSeleccionadas}
+            on:change={toggleSeleccionarTodas}
+            class="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+          />
+          <span class="text-sm text-red-700 font-medium">
+            {facturasSeleccionadas.size} seleccionada(s) de {facturasCanceladas.length} cancelada(s) en esta página
+          </span>
+        </div>
+        <Button
+          variant="primary"
+          size="sm"
+          on:click={eliminarSeleccionadas}
+          disabled={facturasSeleccionadas.size === 0}
+        >
+          Eliminar seleccionadas
+        </Button>
+      </div>
+    {/if}
+
     <div class="p-4 border-b border-gray-200">
       <div class="flex flex-col sm:flex-row gap-3">
         <!-- Búsqueda -->
@@ -566,7 +636,11 @@
         </div>
 
         <!-- Filtro Periodo -->
-        <select class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-[140px] transition-all duration-200">
+        <select
+          bind:value={filtroPeriodo}
+          on:change={() => { paginacion.page = 1; cargarFacturas(); }}
+          class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-[140px] transition-all duration-200"
+        >
           <option value="">Periodo</option>
           <option value="hoy">Hoy</option>
           <option value="semana">Esta semana</option>
@@ -632,19 +706,26 @@
         <thead class="bg-gray-50">
           <tr>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 tracking-wider">
-              <button
-                on:click={() => cambiarOrden('numero_factura')}
-                class="flex items-center gap-1 cursor-pointer hover:text-gray-900 transition-colors"
-              >
-                Folio
-                {#if getIconoOrden('numero_factura') === 'up'}
-                  <ChevronDown class="w-4 h-4 rotate-180" />
-                {:else if getIconoOrden('numero_factura') === 'down'}
-                  <ChevronDown class="w-4 h-4" />
-                {:else}
-                  <ChevronDown class="w-4 h-4 text-gray-400" />
-                {/if}
-              </button>
+              {#if seleccionandoModo}
+                <span class="text-xs text-gray-500">Sel.</span>
+              {:else}
+                <button
+                  on:click={() => cambiarOrden('numero_factura')}
+                  class="flex items-center gap-1 cursor-pointer hover:text-gray-900 transition-colors"
+                >
+                  Folio
+                  {#if getIconoOrden('numero_factura') === 'up'}
+                    <ChevronDown class="w-4 h-4 rotate-180" />
+                  {:else if getIconoOrden('numero_factura') === 'down'}
+                    <ChevronDown class="w-4 h-4" />
+                  {:else}
+                    <ChevronDown class="w-4 h-4 text-gray-400" />
+                  {/if}
+                </button>
+              {/if}
+            </th>
+            <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 tracking-wider">
+              Concepto
             </th>
             <th class="px-6 py-3 text-left text-xs font-medium text-gray-700 tracking-wider">
               <button
@@ -722,9 +803,6 @@
               </button>
             </th>
             <th class="px-6 py-3 text-center text-xs font-medium text-gray-700 tracking-wider">
-              Recordatorios
-            </th>
-            <th class="px-6 py-3 text-center text-xs font-medium text-gray-700 tracking-wider">
               Estatus
             </th>
             <th class="px-6 py-3 text-center text-xs font-medium text-gray-700 tracking-wider">
@@ -771,18 +849,47 @@
             </tr>
           {:else}
             {#each facturas as factura}
-              <tr class="hover:bg-gray-50">
-                <!-- Folio -->
+              <tr class="hover:bg-gray-50 {seleccionandoModo && factura.estado_factura_id === 6 ? 'cursor-pointer' : ''}" on:click={() => seleccionandoModo && factura.estado_factura_id === 6 && toggleSeleccionFactura(factura.id)}>
+                <!-- Folio / Checkbox -->
                 <td class="px-6 py-4">
-                  <div class="flex items-center gap-2">
-                    <button
-                      on:click={() => irADetalle(factura)}
-                      class="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
-                    >
-                      #{factura.numero_factura}
-                    </button>
-                  </div>
-                  <div class="text-xs text-gray-500 mt-1">{factura.cliente?.razonSocial || 'N/A'}</div>
+                  {#if seleccionandoModo}
+                    <div class="flex items-center gap-2">
+                      {#if factura.estado_factura_id === 6}
+                        <input
+                          type="checkbox"
+                          checked={facturasSeleccionadas.has(factura.id)}
+                          on:click|stopPropagation={() => toggleSeleccionFactura(factura.id)}
+                          class="w-4 h-4 text-red-600 border-gray-300 rounded focus:ring-red-500"
+                        />
+                      {:else}
+                        <div class="w-4 h-4"></div>
+                      {/if}
+                      <span class="text-sm font-medium text-gray-600">#{factura.numero_factura}</span>
+                    </div>
+                    <div class="text-xs text-gray-500 mt-1 ml-6">{factura.cliente?.razonSocial || 'N/A'}</div>
+                  {:else}
+                    <div class="flex items-center gap-2">
+                      <button
+                        on:click={() => irADetalle(factura)}
+                        class="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
+                      >
+                        #{factura.numero_factura}
+                      </button>
+                    </div>
+                    <div class="text-xs text-gray-500 mt-1">{factura.cliente?.razonSocial || 'N/A'}</div>
+                  {/if}
+                </td>
+
+                <!-- Concepto -->
+                <td class="px-6 py-4">
+                  {#if factura.primerConcepto}
+                    <p class="text-sm text-gray-900">{factura.primerConcepto.nombre}</p>
+                    {#if factura.primerConcepto.claveProdServ}
+                      <p class="text-xs text-gray-500 mt-1">Clave SAT: {factura.primerConcepto.claveProdServ}</p>
+                    {/if}
+                  {:else}
+                    <span class="text-xs text-gray-400">-</span>
+                  {/if}
                 </td>
 
                 <!-- Monto -->
@@ -808,26 +915,6 @@
                 <!-- Vencimiento -->
                 <td class="px-6 py-4 whitespace-nowrap">
                   <div class="text-sm text-gray-600">{formatearFecha(factura.fechaVencimiento)}</div>
-                </td>
-
-                <!-- Recordatorios -->
-                <td class="px-6 py-4 text-center">
-                  <div class="flex items-center justify-center gap-3">
-                    <!-- Contador de recordatorios enviados -->
-                    <div class="flex items-center gap-1" title="Recordatorios enviados">
-                      <Send class="w-3 h-3 text-blue-500" />
-                      <span class="text-xs text-gray-600 font-medium">
-                        {recordatoriosStats[factura.id]?.total || 0}
-                      </span>
-                    </div>
-                    <!-- Contador de recordatorios vistos -->
-                    <div class="flex items-center gap-1" title="Correos abiertos">
-                      <Eye class="w-3 h-3 {recordatoriosStats[factura.id]?.vistos > 0 ? 'text-green-500' : 'text-gray-400'}" />
-                      <span class="text-xs {recordatoriosStats[factura.id]?.vistos > 0 ? 'text-green-600 font-medium' : 'text-gray-600'}">
-                        {recordatoriosStats[factura.id]?.vistos || 0}
-                      </span>
-                    </div>
-                  </div>
                 </td>
 
                 <!-- Estatus -->

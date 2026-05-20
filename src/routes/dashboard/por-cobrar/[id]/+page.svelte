@@ -2,7 +2,7 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
-  import { ChevronLeft, Trash2, Download, Copy, Camera, RefreshCw, FileText } from 'lucide-svelte';
+  import { ChevronLeft, ChevronRight, Trash2, Download, Copy, Camera, RefreshCw, FileText } from 'lucide-svelte';
   import { authFetch } from '$lib/api';
   import { Button } from '$lib/components/ui';
   import ModalRecordatorios from '../ModalRecordatorios.svelte';
@@ -13,6 +13,7 @@
 
   // Obtener ID de la factura desde la URL
   $: facturaId = $page.params.id;
+  $: if (facturaId) cargarFactura();
 
   // Estado
   let factura: Factura | null = null;
@@ -22,6 +23,8 @@
   let eliminandoFactura = false;
   let modalAgregarPagoAbierto = false;
   let organizacionIdActual = '';
+  let prevId: number | null = null;
+  let nextId: number | null = null;
 
   // Modal de recordatorios
   let modalRecordatoriosAbierto = false;
@@ -46,6 +49,8 @@
           estado_factura_id: data.factura.estado.id,
           prioridad_cobranza_id: data.factura.prioridad.id
         };
+        prevId = data.prevId ?? null;
+        nextId = data.nextId ?? null;
       } else {
         error = data.error || 'No se encontró la factura';
       }
@@ -58,6 +63,10 @@
 
   function volver() {
     goto('/dashboard/por-cobrar');
+  }
+
+  function irAFactura(id: number) {
+    goto(`/dashboard/por-cobrar/${id}`);
   }
 
   function abrirModalRecordatorios(abrirFormulario = false) {
@@ -375,7 +384,7 @@
   }
 
   onMount(() => {
-    cargarFactura();
+    // cargarFactura is triggered reactively by $: facturaId
   });
 </script>
 
@@ -415,6 +424,24 @@
             >
               <ChevronLeft class="w-5 h-5" />
             </button>
+            <div class="flex items-center gap-1">
+              <button
+                on:click={() => prevId && irAFactura(prevId)}
+                disabled={!prevId}
+                title={prevId ? `Factura anterior (ID ${prevId})` : 'Sin factura anterior'}
+                class="p-2 rounded-lg transition-colors {prevId ? 'hover:bg-gray-100 text-gray-600' : 'text-gray-300 cursor-not-allowed'}"
+              >
+                <ChevronLeft class="w-4 h-4" />
+              </button>
+              <button
+                on:click={() => nextId && irAFactura(nextId)}
+                disabled={!nextId}
+                title={nextId ? `Siguiente factura (ID ${nextId})` : 'Sin factura siguiente'}
+                class="p-2 rounded-lg transition-colors {nextId ? 'hover:bg-gray-100 text-gray-600' : 'text-gray-300 cursor-not-allowed'}"
+              >
+                <ChevronRight class="w-4 h-4" />
+              </button>
+            </div>
             <h1 class="text-2xl font-bold text-gray-900">Factura {factura.numero_factura}</h1>
           </div>
 

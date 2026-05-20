@@ -326,6 +326,17 @@
        );
 
    
+       // 🔹 Determinar régimen fiscal válido según tipo de persona (RFC)
+       const rfcLimpio = (clienteSeleccionado.rfc || '').trim();
+       const esPersonaMoral = rfcLimpio.length === 12;
+       const regimenesMoral = ['601','603','607','609','610','620','622','623','624','626','628'];
+       const regimenesFisica = ['605','606','608','611','612','614','615','616','621','625','626','629','630'];
+       const regimenRaw = String((clienteSeleccionado.regimenFiscal || '626')).split(' - ')[0].trim();
+       const regimenValidos = esPersonaMoral ? regimenesMoral : regimenesFisica;
+       const taxSystem = regimenValidos.includes(regimenRaw)
+         ? regimenRaw
+         : esPersonaMoral ? '626' : '626';
+
        // 🔹 Construir payload de Facturapi
        const facturapiPayload = {
          type: 'P',
@@ -333,7 +344,7 @@
            legal_name: clienteSeleccionado.razonSocial,
            email: clienteSeleccionado.email || clienteSeleccionado.correo,
            tax_id: clienteSeleccionado.rfc,
-           tax_system: String((clienteSeleccionado.regimenFiscal || '616').toString().split(' - ')[0].trim()),
+           tax_system: taxSystem,
            address: {
              zip: clienteSeleccionado.codigoPostal || '00000'
            }
