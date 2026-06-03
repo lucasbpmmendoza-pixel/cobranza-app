@@ -26,6 +26,12 @@
   let prevId: number | null = null;
   let nextId: number | null = null;
 
+  // Recurrencia
+  let recurrenciaActiva = false;
+  let diaRecurrencia = '1';
+  let periodoRecurrencia = 'mes';
+  let guardandoRecurrencia = false;
+
   // Modal de recordatorios
   let modalRecordatoriosAbierto = false;
   let abrirFormularioRecordatorio = false;
@@ -51,6 +57,9 @@
         };
         prevId = data.prevId ?? null;
         nextId = data.nextId ?? null;
+        recurrenciaActiva = !!data.factura.recurrenciaActiva;
+        diaRecurrencia = data.factura.diaRecurrencia || '1';
+        periodoRecurrencia = data.factura.periodoRecurrencia || 'mes';
       } else {
         error = data.error || 'No se encontró la factura';
       }
@@ -82,6 +91,31 @@
   function abrirModalAgregarPago() {
     if (!factura) return;
     modalAgregarPagoAbierto = true;
+  }
+
+  async function guardarRecurrencia() {
+    guardandoRecurrencia = true;
+    try {
+      const organizacionId = organizacionIdActual;
+      const response = await authFetch(`/api/facturas/${facturaId}?organizacionId=${organizacionId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          recurrenciaActiva,
+          diaRecurrencia: recurrenciaActiva ? diaRecurrencia : null,
+          periodoRecurrencia: recurrenciaActiva ? periodoRecurrencia : null
+        })
+      });
+      const data = await response.json();
+      if (data.success) {
+        await Swal.fire({ icon: 'success', title: 'Recurrencia actualizada', text: 'Los datos de recurrencia se guardaron correctamente.', timer: 2000, showConfirmButton: false });
+      } else {
+        await Swal.fire({ icon: 'error', title: 'Error', text: data.error || 'No se pudo guardar la recurrencia.', confirmButtonColor: '#3b82f6' });
+      }
+    } catch {
+      await Swal.fire({ icon: 'error', title: 'Error', text: 'No se pudo guardar la recurrencia.', confirmButtonColor: '#3b82f6' });
+    } finally {
+      guardandoRecurrencia = false;
+    }
   }
 
   function formatearMetodoPago(metodoPago: string | undefined): string {
@@ -607,6 +641,48 @@
                   </div>
                 </div>
 
+                <!-- Recurrencia -->
+                <div class="mb-6 pt-4 border-t border-gray-200">
+                  <div class="flex items-center justify-between mb-3">
+                    <h3 class="text-xs font-medium text-gray-500 uppercase">Recurrencia</h3>
+                    <label class="flex items-center cursor-pointer">
+                      <span class="me-2 text-xs font-medium text-gray-700">{recurrenciaActiva ? 'Activada' : 'Desactivada'}</span>
+                      <input type="checkbox" bind:checked={recurrenciaActiva} class="sr-only peer" />
+                      <div class="relative w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
+                  {#if recurrenciaActiva}
+                    <div class="flex flex-wrap items-center gap-2 mb-3">
+                      <span class="text-xs text-gray-700">El dia</span>
+                      <input
+                        type="number"
+                        bind:value={diaRecurrencia}
+                        min="1"
+                        max="31"
+                        class="w-16 px-2 py-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center text-sm"
+                        aria-label="Dia de recurrencia"
+                      />
+                      <span class="text-xs text-gray-700">por periodo de</span>
+                      <select
+                        bind:value={periodoRecurrencia}
+                        class="px-3 py-1 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-sm"
+                        aria-label="Periodo de recurrencia"
+                      >
+                        <option value="semana">Semana</option>
+                        <option value="mes">Mes</option>
+                        <option value="anio">Año</option>
+                      </select>
+                    </div>
+                  {/if}
+                  <button
+                    on:click={guardarRecurrencia}
+                    disabled={guardandoRecurrencia}
+                    class="px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-xs"
+                  >
+                    {guardandoRecurrencia ? 'Guardando...' : 'Guardar recurrencia'}
+                  </button>
+                </div>
+
                 <!-- Próximos recordatorios -->
                 <div>
                   <h3 class="text-xs font-medium text-gray-500 uppercase mb-3">Próximos Recordatorios</h3>
@@ -874,8 +950,6 @@
     </div>
   {/if}
 </div>
-
-<!-- Modal de Recordatorios -->
 <ModalRecordatorios
   bind:abierto={modalRecordatoriosAbierto}
   bind:abrirFormulario={abrirFormularioRecordatorio}

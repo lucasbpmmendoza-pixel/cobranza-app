@@ -62,44 +62,8 @@
 
 	// Recurrencia
 	let recurrenciaActiva = false;
-	let ordenRecurrencia = '';
-	let identificadorRecurrencia = '';
-	let fechaInicioRecurrencia = new Date().toISOString().split('T')[0];
-	let fechaPrimeraFactura = '';
-	let periodoRecurrencia = 'mensual';
 	let diaRecurrencia = '1';
-	let cadaRecurrencia = 'mes';
-	let finRecurrencia = 'nunca';
-	let fechaFinRecurrencia = '';
-	let numeroOcurrencias = 1;
-
-	// Calcular fecha de próxima factura
-	$: proximaFactura = calcularProximaFactura();
-
-	// Formatear fechas para mostrar
-	$: fechaInicioFormateada = formatearFecha(fechaInicioRecurrencia);
-	$: fechaPrimeraFormateada = formatearFecha(fechaPrimeraFactura);
-
-	function formatearFecha(fecha: string): string {
-		if (!fecha) return '';
-		try {
-			const date = new Date(fecha + 'T00:00:00');
-			const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-			const dia = date.getDate();
-			const mes = meses[date.getMonth()];
-			const año = date.getFullYear();
-			return `${dia.toString().padStart(2, '0')} / ${mes} / ${año}`;
-		} catch {
-			return '';
-		}
-	}
-
-	function abrirSelectorFecha(inputId: string) {
-		const input = document.getElementById(inputId) as HTMLInputElement;
-		if (input) {
-			input.showPicker?.();
-		}
-	}
+	let periodoRecurrencia = 'mes';
 
 	// Notas
 	let notasCliente = '';
@@ -339,16 +303,8 @@
 				recurrenciaActiva,
 				recurrencia: recurrenciaActiva
 					? {
-							orden: ordenRecurrencia,
-							identificador: identificadorRecurrencia,
-							inicio: fechaInicioRecurrencia,
-							fechaPrimeraFactura,
 							periodo: periodoRecurrencia,
-							dia: diaRecurrencia,
-							cada: cadaRecurrencia,
-							fin: finRecurrencia,
-							fechaFin: fechaFinRecurrencia,
-							ocurrencias: numeroOcurrencias
+							dia: diaRecurrencia
 					  }
 					: null,
 				notasCliente,
@@ -442,24 +398,6 @@
 		goto('/dashboard/por-cobrar');
 	}
 
-	function calcularProximaFactura() {
-		if (!fechaPrimeraFactura || !recurrenciaActiva) return '';
-
-		try {
-			const fecha = new Date(fechaPrimeraFactura);
-			const diasSemana = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
-			const meses = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-
-			const diaSemana = diasSemana[fecha.getDay()];
-			const dia = fecha.getDate();
-			const mes = meses[fecha.getMonth()];
-			const año = fecha.getFullYear();
-
-			return `${diaSemana} ${dia.toString().padStart(2, '0')} de ${mes} del ${año}`;
-		} catch {
-			return '';
-		}
-	}
 </script>
 
 <div class="pb-6">
@@ -904,142 +842,26 @@
 		</div>
 
 		{#if recurrenciaActiva}
-			<div class="space-y-6">
-				<!-- Orden de compra e Identificador -->
-				<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-					<div>
-						<label for="orden-rec" class="block text-sm text-gray-600 mb-2"
-							>Orden de compra (opcional)</label
-						>
-						<input
-							id="orden-rec"
-							type="text"
-							bind:value={ordenRecurrencia}
-							placeholder=""
-							class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-						/>
-					</div>
-					<div>
-						<label for="identificador-rec" class="block text-sm text-gray-600 mb-2"
-							>Identificador (opcional)
-							<button type="button" class="ml-1 text-blue-600 hover:text-blue-700" aria-label="Información sobre identificador">
-								<svg
-									class="w-4 h-4 inline"
-									fill="none"
-									stroke="currentColor"
-									viewBox="0 0 24 24"
-								>
-									<path
-										stroke-linecap="round"
-										stroke-linejoin="round"
-										stroke-width="2"
-										d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-									/>
-								</svg>
-							</button>
-						</label>
-						<input
-							id="identificador-rec"
-							type="text"
-							bind:value={identificadorRecurrencia}
-							placeholder=""
-							class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-						/>
-					</div>
-				</div>
-
-				<!-- Fechas -->
-				<div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-					<div>
-						<label for="fecha-inicio-rec" class="block text-sm text-gray-600 mb-2"
-							>Fecha de inicio</label
-						>
-						<input
-							id="fecha-inicio-rec"
-							type="date"
-							bind:value={fechaInicioRecurrencia}
-							class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-						/>
-					</div>
-					<div>
-						<label for="fecha-primera-rec" class="block text-sm text-gray-600 mb-2"
-							>Fecha de la primer factura</label
-						>
-						<input
-							id="fecha-primera-rec"
-							type="date"
-							bind:value={fechaPrimeraFactura}
-							class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-						/>
-					</div>
-				</div>
-
-				<!-- Periodo de factura -->
-				<div>
-					<span class="block text-sm text-gray-600 mb-2">Periodo de factura</span>
-					<div class="flex flex-wrap items-center gap-2">
-						<select
-							bind:value={periodoRecurrencia}
-							class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-							aria-label="Periodo de factura"
-						>
-							<option value="semanal">Semanal</option>
-							<option value="mensual">Mensual</option>
-						</select>
-						<span class="text-gray-700">el día</span>
-						<select
-							bind:value={diaRecurrencia}
-							class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-							aria-label="Día del periodo"
-						>
-							{#each Array.from({ length: 28 }, (_, i) => i + 1) as dia}
-								<option value={dia.toString()}>{dia}</option>
-							{/each}
-							<option value="ultimo">Último</option>
-						</select>
-						<span class="text-gray-700">de cada</span>
-						<select
-							bind:value={cadaRecurrencia}
-							class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-							aria-label="Frecuencia"
-						>
-							<option value="mes">mes</option>
-							{#each Array.from({ length: 11 }, (_, i) => i + 2) as meses}
-								<option value={`${meses}-meses`}>{meses} meses</option>
-							{/each}
-						</select>
-					</div>
-				</div>
-
-				<!-- Finaliza -->
-				<div>
-					<span class="block text-sm text-gray-600 mb-2">Finaliza</span>
-					<select
-						bind:value={finRecurrencia}
-						class="w-full md:w-64 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-						aria-label="Finalización de recurrencia"
-					>
-						<option value="nunca">Nunca</option>
-						<option value="el-dia">El día</option>
-						<option value="despues-de">Después de</option>
-					</select>
-				</div>
-
-				<!-- Mensaje informativo -->
-				{#if proximaFactura}
-					<div class="bg-blue-50 border border-blue-200 rounded-lg p-4 flex items-start gap-3">
-						<svg class="w-5 h-5 text-blue-600 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-							<path
-								fill-rule="evenodd"
-								d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-								clip-rule="evenodd"
-							/>
-						</svg>
-						<p class="text-sm text-blue-800">
-							Tu próxima factura se enviará el día <strong>{proximaFactura}</strong>
-						</p>
-					</div>
-				{/if}
+			<div class="flex flex-wrap items-center gap-3">
+				<span class="text-sm text-gray-700">El dia</span>
+				<input
+					type="number"
+					bind:value={diaRecurrencia}
+					min="1"
+					max="31"
+					class="w-20 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-center"
+					aria-label="Dia de recurrencia"
+				/>
+				<span class="text-sm text-gray-700">por periodo de</span>
+				<select
+					bind:value={periodoRecurrencia}
+					class="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+					aria-label="Periodo de recurrencia"
+				>
+					<option value="semana">Semana</option>
+					<option value="mes">Mes</option>
+					<option value="anio">Año</option>
+				</select>
 			</div>
 		{/if}
 	</div>

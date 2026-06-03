@@ -99,7 +99,10 @@ export const GET: RequestHandler = async (event) => {
         pc.codigo as PrioridadCodigo,
         u.Correo as UsuarioCreadorCorreo,
         u.Nombre as UsuarioCreadorNombre,
-        u.Apellido as UsuarioCreadorApellido
+        u.Apellido as UsuarioCreadorApellido,
+        f.RecurrenciaActiva,
+        f.DiaRecurrencia,
+        f.PeriodoRecurrencia
       FROM Facturas f
       INNER JOIN Clientes c ON f.ClienteId = c.Id
       LEFT JOIN Regimen r ON c.RegimenFiscalId = r.ID_Regimen
@@ -231,7 +234,10 @@ export const GET: RequestHandler = async (event) => {
         id: row.prioridad_cobranza_id,
         codigo: row.PrioridadCodigo
       },
-      conceptos
+      conceptos,
+      recurrenciaActiva: row.RecurrenciaActiva === true || row.RecurrenciaActiva === 1,
+      diaRecurrencia: row.DiaRecurrencia || null,
+      periodoRecurrencia: row.PeriodoRecurrencia || null
     };
 
     // Obtener IDs de la factura anterior y siguiente (misma organización)
@@ -261,6 +267,60 @@ export const GET: RequestHandler = async (event) => {
       success: false,
       error: 'Error al obtener factura: ' + (error as Error).message
     }, { status: 500 });
+  }
+};
+
+export const PATCH: RequestHandler = async (event) => {
+  const user = getUserFromRequest(event);
+  if (!user) {
+    return unauthorizedResponse('Token de autenticación requerido');
+  }
+
+  const { params, url } = event;
+  const facturaId = Number(params.id);
+  const organizacionId = Number(url.searchParams.get('organizacionId'));
+
+  if (!Number.isInteger(facturaId) || facturaId <= 0) {
+    return json({ success: false, error: 'ID de factura inválido' }, { status: 400 });
+  }
+  if (!Number.isInteger(organizacionId) || organizacionId <= 0) {
+    return json({ success: false, error: 'organizacionId es requerido' }, { status: 400 });
+  }
+
+  try {
+    const data = await event.request.json();
+    const pool = await getConnection();
+
+    // Verify factura belongs to this organization
+    const check = await pool.request()
+      .input('FacturaId', sql.Int, facturaId)
+      .input('OrganizacionId', sql.Int, organizacionId)
+      .query(`SELECT TOP 1 f.Id FROM Facturas f INNER JOIN Clientes c ON f.ClienteId = c.Id WHERE f.Id = @FacturaId AND c.OrganizacionId = @OrganizacionId`);
+
+    if (!check.recordset.length) {
+      return json({ success: false, error: 'Factura no encontrada' }, { status: 404 });
+    }
+
+    const recurrenciaActiva = data.recurrenciaActiva ? 1 : 0;
+    const diaRecurrencia = recurrenciaActiva ? String(data.diaRecurrencia ?? '1') : null;
+    const periodoRecurrencia = recurrenciaActiva ? (data.periodoRecurrencia || null) : null;
+
+    await pool.request()
+      .input('FacturaId', sql.Int, facturaId)
+      .input('RecurrenciaActiva', sql.Bit, recurrenciaActiva)
+      .input('DiaRecurrencia', sql.NVarChar(10), diaRecurrencia)
+      .input('PeriodoRecurrencia', sql.NVarChar(20), periodoRecurrencia)
+      .query(`
+        UPDATE Facturas
+        SET RecurrenciaActiva = @RecurrenciaActiva,
+            DiaRecurrencia = @DiaRecurrencia,
+            PeriodoRecurrencia = @PeriodoRecurrencia
+        WHERE Id = @FacturaId
+      `);
+
+    return json({ success: true });
+  } catch (error) {
+    return json({ success: false, error: 'Error al actualizar recurrencia: ' + (error as Error).message }, { status: 500 });
   }
 };
 
