@@ -53,7 +53,8 @@
         factura = {
           ...data.factura,
           estado_factura_id: data.factura.estado.id,
-          prioridad_cobranza_id: data.factura.prioridad.id
+          prioridad_cobranza_id: data.factura.prioridad.id,
+          numero_factura_facturapi: data.factura.numeroFacturaFacturapi
         };
         prevId = data.prevId ?? null;
         nextId = data.nextId ?? null;
@@ -233,7 +234,7 @@
       Swal.fire({
         icon: 'success',
         title: 'Descarga exitosa',
-        text: `El archivo XML de la factura ${factura.numero_factura} se ha descargado correctamente`,
+        text: `El archivo XML de la factura ${factura.numero_factura_facturapi || factura.numero_factura} se ha descargado correctamente`,
         timer: 2000,
         showConfirmButton: false
       });
@@ -253,7 +254,7 @@
 
     const result = await Swal.fire({
       title: 'Enviar Factura',
-      html: `¿Deseas enviar la factura <strong>${factura.numero_factura}</strong> al cliente <strong>${factura.cliente?.razonSocial}</strong>?`,
+      html: `¿Deseas enviar la factura <strong>${factura.numero_factura_facturapi || factura.numero_factura}</strong> al cliente <strong>${factura.cliente?.razonSocial}</strong>?`,
       icon: 'question',
       showCancelButton: true,
       confirmButtonColor: '#3b82f6',
@@ -341,7 +342,7 @@
 
     const result = await Swal.fire({
       title: '¿Eliminar factura?',
-      html: `${mensajeAccion}<br><br><strong>${factura.numero_factura}</strong>`,
+      html: `${mensajeAccion}<br><br><strong>${factura.numero_factura_facturapi || factura.numero_factura}</strong>`,
       icon: 'warning',
       showCancelButton: true,
       confirmButtonColor: '#dc2626',
@@ -378,8 +379,8 @@
       let mensajeExito = data.advertenciaFacturapi
         || (
           data.pagosEliminados > 0
-            ? `La factura ${factura.numero_factura} se eliminó correctamente junto con ${data.pagosEliminados} pago(s) registrados`
-            : `La factura ${factura.numero_factura} se eliminó correctamente`
+            ? `La factura ${factura.numero_factura_facturapi || factura.numero_factura} se eliminó correctamente junto con ${data.pagosEliminados} pago(s) registrados`
+            : `La factura ${factura.numero_factura_facturapi || factura.numero_factura} se eliminó correctamente`
         );
 
       if (data.pagosFacturapiCancelados > 0 || data.pagosFacturapiYaCancelados > 0) {
@@ -446,7 +447,7 @@
           <span>/</span>
           <button on:click={volver} class="hover:text-gray-700">Facturas</button>
           <span>/</span>
-          <span class="text-blue-600">Detalle de {factura.numero_factura}</span>
+          <span class="text-blue-600">Detalle de {factura.numero_factura_facturapi || factura.numero_factura}</span>
         </div>
 
         <!-- Título y botones -->
@@ -476,7 +477,7 @@
                 <ChevronRight class="w-4 h-4" />
               </button>
             </div>
-            <h1 class="text-2xl font-bold text-gray-900">Factura {factura.numero_factura}</h1>
+            <h1 class="text-2xl font-bold text-gray-900">Factura {factura.numero_factura_facturapi || factura.numero_factura}</h1>
           </div>
 
           <div class="flex gap-3">
@@ -787,7 +788,7 @@
               <tbody>
                 <tr class="border-b border-gray-100">
                   <td class="py-4">
-                    <button class="text-sm text-blue-600 hover:underline">{factura.numero_factura}</button>
+                    <button class="text-sm text-blue-600 hover:underline">{factura.numero_factura_facturapi || factura.numero_factura}</button>
                   </td>
                   <td class="py-4">
                     <span class="inline-flex items-center justify-center w-6 h-6 bg-gray-200 rounded text-xs text-gray-600">P</span>
