@@ -365,6 +365,7 @@
         facturas = data.facturas.map((f: any) => ({
           id: f.id,
           numero_factura: f.numeroFactura,
+          numero_factura_facturapi: f.numeroFacturaFacturapi,
           clienteId: f.clienteId,
           cliente: {
             id: f.cliente.id,
@@ -864,7 +865,7 @@
                       {:else}
                         <div class="w-4 h-4"></div>
                       {/if}
-                      <span class="text-sm font-medium text-gray-600">#{factura.numero_factura}</span>
+                      <span class="text-sm font-medium text-gray-600">#{factura.numero_factura_facturapi || factura.numero_factura}</span>
                     </div>
                     <div class="text-xs text-gray-500 mt-1 ml-6">{factura.cliente?.razonSocial || 'N/A'}</div>
                   {:else}
@@ -873,7 +874,7 @@
                         on:click={() => irADetalle(factura)}
                         class="text-sm font-medium text-blue-600 hover:text-blue-800 hover:underline"
                       >
-                        #{factura.numero_factura}
+                        #{factura.numero_factura_facturapi || factura.numero_factura}
                       </button>
                     </div>
                     <div class="text-xs text-gray-500 mt-1">{factura.cliente?.razonSocial || 'N/A'}</div>

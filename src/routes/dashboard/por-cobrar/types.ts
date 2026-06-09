@@ -69,6 +69,7 @@ export interface PagoResumen {
 export interface Factura {
   id: number;
   numero_factura?: string;
+  numero_factura_facturapi?: string;
   clienteId: number;
   cliente?: ClienteFactura;
   montoTotal?: number;
