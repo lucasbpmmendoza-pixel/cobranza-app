@@ -527,16 +527,16 @@ export const POST: RequestHandler = async (event) => {
     if (recurrencia && data.recurrenciaActiva) {
       facturaRequest
         .input('RecurrenciaActiva', sql.Bit, 1)
-        .input('OrdenRecurrencia', sql.NVarChar(50), recurrencia.orden || null)
-        .input('IdentificadorRecurrencia', sql.NVarChar(100), recurrencia.identificador || null)
+        .input('OrdenRecurrencia', sql.NVarChar(50), recurrencia.orden != null ? String(recurrencia.orden) : null)
+        .input('IdentificadorRecurrencia', sql.NVarChar(100), recurrencia.identificador != null ? String(recurrencia.identificador) : null)
         .input('FechaInicioRecurrencia', sql.Date, recurrencia.inicio || null)
         .input('FechaPrimeraFactura', sql.Date, recurrencia.fechaPrimeraFactura || null)
-        .input('PeriodoRecurrencia', sql.NVarChar(20), recurrencia.periodo || null)
-        .input('DiaRecurrencia', sql.NVarChar(10), recurrencia.dia || null)
-        .input('CadaRecurrencia', sql.NVarChar(20), recurrencia.cada || null)
-        .input('FinRecurrencia', sql.NVarChar(20), recurrencia.fin || null)
+        .input('PeriodoRecurrencia', sql.NVarChar(20), recurrencia.periodo ? String(recurrencia.periodo) : null)
+        .input('DiaRecurrencia', sql.NVarChar(10), recurrencia.dia != null ? String(recurrencia.dia) : null)
+        .input('CadaRecurrencia', sql.NVarChar(20), recurrencia.cada != null ? String(recurrencia.cada) : null)
+        .input('FinRecurrencia', sql.NVarChar(20), recurrencia.fin != null ? String(recurrencia.fin) : null)
         .input('FechaFinRecurrencia', sql.Date, recurrencia.fechaFin || null)
-        .input('NumeroOcurrencias', sql.Int, recurrencia.ocurrencias || null);
+        .input('NumeroOcurrencias', sql.Int, recurrencia.ocurrencias != null ? Number(recurrencia.ocurrencias) : null);
     } else {
       facturaRequest
         .input('RecurrenciaActiva', sql.Bit, 0)
