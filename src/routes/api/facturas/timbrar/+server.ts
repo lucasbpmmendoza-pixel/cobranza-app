@@ -21,10 +21,15 @@ export const POST: RequestHandler = async (event) => {
   }
 
   const { request } = event;
+  let facturaId: any;
   try {
-    const { facturaId } = await request.json();
+    ({ facturaId } = await request.json());
+
+    console.log(`[TIMBRADO] === Inicio de timbrado ===`);
+    console.log(`[TIMBRADO] facturaId: ${facturaId}, usuario: ${user.id || 'desconocido'}`);
 
     if (!facturaId) {
+      console.warn('[TIMBRADO] Falló validación: facturaId no fue enviado');
       return json({ success: false, error: 'facturaId es requerido' }, { status: 400 });
     }
 
@@ -74,13 +79,17 @@ export const POST: RequestHandler = async (event) => {
     const facturaResult = await db.query(facturaQuery, [facturaId]);
 
     if (!facturaResult || facturaResult.length === 0) {
+      console.warn(`[TIMBRADO] Factura no encontrada en BD: facturaId=${facturaId}`);
       return json({ success: false, error: 'Factura no encontrada' }, { status: 404 });
     }
 
     const factura = facturaResult[0];
 
+    console.log(`[TIMBRADO] Factura recuperada: numero=${factura.numero_factura}, cliente=${factura.ClienteRazonSocial}, RFC=${factura.ClienteRFC}, monto=${factura.MontoTotal}`);
+
     // Validaciones de datos requeridos
     if (!factura.FacturapiKey) {
+      console.warn(`[TIMBRADO] Falló validación FacturapiKey: facturaId=${facturaId}, organizacion=${factura.OrganizacionRazonSocial}`);
       return json({
         success: false,
         error: 'La organización no tiene configurada una API key de Facturapi'
@@ -88,6 +97,7 @@ export const POST: RequestHandler = async (event) => {
     }
 
     if (!factura.ClienteEmail) {
+      console.warn(`[TIMBRADO] Falló validación ClienteEmail: facturaId=${facturaId}, cliente=${factura.ClienteRazonSocial}`);
       return json({
         success: false,
         error: 'El cliente no tiene correo electrónico configurado en CorreoPrincipal'
@@ -95,6 +105,7 @@ export const POST: RequestHandler = async (event) => {
     }
 
     if (!factura.MetodoPago) {
+      console.warn(`[TIMBRADO] Falló validación MetodoPago: facturaId=${facturaId}`);
       return json({
         success: false,
         error: 'La factura no tiene método de pago (MetodoPago) configurado'
@@ -102,6 +113,7 @@ export const POST: RequestHandler = async (event) => {
     }
 
     if (!factura.FormaPago) {
+      console.warn(`[TIMBRADO] Falló validación FormaPago: facturaId=${facturaId}`);
       return json({
         success: false,
         error: 'La factura no tiene forma de pago (FormaPago) configurada'
@@ -109,6 +121,7 @@ export const POST: RequestHandler = async (event) => {
     }
 
     if (!factura.UsoCFDI) {
+      console.warn(`[TIMBRADO] Falló validación UsoCFDI: facturaId=${facturaId}`);
       return json({
         success: false,
         error: 'La factura no tiene uso de CFDI (UsoCFDI) configurado'
@@ -135,11 +148,14 @@ export const POST: RequestHandler = async (event) => {
     const conceptosResult = await db.query(conceptosQuery, [facturaId]);
 
     if (!conceptosResult || conceptosResult.length === 0) {
+      console.warn(`[TIMBRADO] Falló validación conceptos: facturaId=${facturaId} no tiene conceptos`);
       return json({
         success: false,
         error: 'La factura no tiene conceptos asociados'
       }, { status: 400 });
     }
+
+    console.log(`[TIMBRADO] Conceptos encontrados: ${conceptosResult.length}`);
 
     // RFC genérico (público en general) SIEMPRE debe usar régimen 616
     const esRFCGenerico = factura.ClienteRFC === 'XAXX010101000';
@@ -155,12 +171,15 @@ export const POST: RequestHandler = async (event) => {
 
       // Validar que el régimen fiscal exista
       if (!regimenFiscal) {
+        console.warn(`[TIMBRADO] Falló validación régimen fiscal: facturaId=${facturaId}, clienteRFC=${factura.ClienteRFC}`);
         return json({
           success: false,
           error: 'El cliente no tiene régimen fiscal configurado'
         }, { status: 400 });
       }
     }
+
+    console.log(`[TIMBRADO] Régimen fiscal a usar: ${regimenFiscal} (esRFCGenerico=${esRFCGenerico})`);
 
     // Limpiar razón social para el SAT (CFDI 4.0)
     // - Convertir a mayúsculas
@@ -172,7 +191,11 @@ export const POST: RequestHandler = async (event) => {
 
       let resultado = razonSocial
         .toUpperCase()
-        .normalize('NFD').replace(/[\u0300-\u036f]/g, ''); // Eliminar acentos
+        // Proteger la \u00d1: al normalizar en NFD se descompone en N + tilde y luego
+        // se perder\u00eda al eliminar acentos, convirti\u00e9ndola en N. El SAT exige la \u00d1.
+        .replace(/\u00d1/g, '\uffff')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // Eliminar acentos
+        .replace(/\uffff/g, '\u00d1'); // Restaurar la \u00d1
 
       // Solo eliminar regímenes societarios si es persona moral
       if (!esPersonaFisica) {
@@ -293,69 +316,164 @@ export const POST: RequestHandler = async (event) => {
       };
     }
 
-    // Crear factura en Facturapi usando la API key de la organización
-    const { data: invoice } = await axios.post(
-      'https://www.facturapi.io/v2/invoices',
-      facturapiPayload,
-      {
-        auth: {
-          username: factura.FacturapiKey,
-          password: ''
-        }
-      }
-    );
+    console.log(`[TIMBRADO] Serie/Folio: serie=${serie}, folio=${folio}`);
+    console.log(`[TIMBRADO] Payload a enviar a Facturapi:`, JSON.stringify(facturapiPayload, null, 2));
 
-    console.log('Respuesta de Facturapi al crear factura:', {
-      id: invoice.id,
-      uuid: invoice.uuid,
-      allKeys: Object.keys(invoice)
-    });
+    // Crear factura en Facturapi usando la API key de la organización
+    let invoice: any;
+    try {
+      const response = await axios.post(
+        'https://www.facturapi.io/v2/invoices',
+        facturapiPayload,
+        {
+          auth: {
+            username: factura.FacturapiKey,
+            password: ''
+          }
+        }
+      );
+      invoice = response.data;
+    } catch (facturapiErr: any) {
+      console.error(`[TIMBRADO] ERROR en Facturapi al crear factura (facturaId=${facturaId}):`, {
+        status: facturapiErr.response?.status,
+        statusText: facturapiErr.response?.statusText,
+        facturapiError: facturapiErr.response?.data,
+        message: facturapiErr.message,
+        code: facturapiErr.code
+      });
+      throw facturapiErr;
+    }
+
+    console.log(`[TIMBRADO] Facturapi respondió OK: id=${invoice.id}, uuid=${invoice.uuid}`);
 
     // Descargar PDF y XML desde Facturapi con autenticación
     const pdfUrl = `https://www.facturapi.io/v2/invoices/${invoice.id}/pdf`;
     const xmlUrl = `https://www.facturapi.io/v2/invoices/${invoice.id}/xml`;
 
-    // Descargar PDF en base64 usando la API key de la organización
-    const pdfResponse = await axios.get(pdfUrl, {
-      auth: {
-        username: factura.FacturapiKey,
-        password: ''
-      },
-      responseType: 'arraybuffer'
-    });
-    const pdfBase64 = Buffer.from(pdfResponse.data).toString('base64');
+    let pdfResponse: any;
+    let xmlResponse: any;
+    try {
+      // Descargar PDF en base64 usando la API key de la organización
+      pdfResponse = await axios.get(pdfUrl, {
+        auth: {
+          username: factura.FacturapiKey,
+          password: ''
+        },
+        responseType: 'arraybuffer'
+      });
 
-    // Descargar XML en base64 usando la API key de la organización
-    const xmlResponse = await axios.get(xmlUrl, {
-      auth: {
-        username: factura.FacturapiKey,
-        password: ''
-      },
-      responseType: 'arraybuffer'
-    });
+      // Descargar XML en base64 usando la API key de la organización
+      xmlResponse = await axios.get(xmlUrl, {
+        auth: {
+          username: factura.FacturapiKey,
+          password: ''
+        },
+        responseType: 'arraybuffer'
+      });
+    } catch (downloadErr: any) {
+      console.error(`[TIMBRADO] ERROR al descargar PDF/XML de Facturapi (facturaId=${facturaId}, invoiceId=${invoice.id}):`, {
+        status: downloadErr.response?.status,
+        statusText: downloadErr.response?.statusText,
+        url: downloadErr.config?.url,
+        message: downloadErr.message
+      });
+      throw downloadErr;
+    }
+
+    const pdfBase64 = Buffer.from(pdfResponse.data).toString('base64');
     const xmlBase64 = Buffer.from(xmlResponse.data).toString('base64');
 
+    console.log(`[TIMBRADO] PDF y XML descargados correctamente (PDF: ${pdfResponse.data.byteLength} bytes, XML: ${xmlResponse.data.byteLength} bytes)`);
+
     // Guardar toda la información del timbrado en la base de datos
-    await db.query(
-      `UPDATE Facturas
-       SET UUID = ?,
-           UUIDFacturapi = ?,
-           Timbrado = 1,
-           FechaTimbrado = GETDATE(),
-           FacturapiId = ?,
-           PDFUrl = ?,
-           XMLUrl = ?,
-           PDFBase64 = ?,
-           XMLBase64 = ?
-       WHERE Id = ?`,
-      [invoice.uuid, invoice.uuid, invoice.id, pdfUrl, xmlUrl, pdfBase64, xmlBase64, facturaId]
-    );
+    try {
+      await db.query(
+        `UPDATE Facturas
+         SET UUID = ?,
+             UUIDFacturapi = ?,
+             Timbrado = 1,
+             FechaTimbrado = GETDATE(),
+             FacturapiId = ?,
+             PDFUrl = ?,
+             XMLUrl = ?,
+             PDFBase64 = ?,
+             XMLBase64 = ?
+         WHERE Id = ?`,
+        [invoice.uuid, invoice.uuid, invoice.id, pdfUrl, xmlUrl, pdfBase64, xmlBase64, facturaId]
+      );
+      console.log(`[TIMBRADO] Factura actualizada en BD: facturaId=${facturaId}, uuid=${invoice.uuid}`);
+    } catch (dbErr: any) {
+      console.error(`[TIMBRADO] ERROR al actualizar factura en BD (facturaId=${facturaId}, uuid=${invoice.uuid}):`, {
+        message: dbErr.message,
+        code: dbErr.code
+      });
+      throw dbErr;
+    }
 
     // Enviar correo automáticamente al cliente después de timbrar
     let emailEnviado = false;
     let emailError = null;
+    let recordatorioId: number | null = null;
 
     if (factura.ClienteEmail) {
+      const nombreCliente = factura.ClienteRazonSocial;
+      const numeroFactura = factura.numero_factura;
+      const asuntoCorreo = `Factura ${numeroFactura} - ${nombreCliente}`;
+      const fechaEmisionFormateada = new Date(factura.FechaEmision).toLocaleDateString('es-MX');
+      const totalFormateado = `$${parseFloat(factura.MontoTotal).toFixed(2)} ${factura.Moneda || 'MXN'}`;
+      const mensajeCorreo = [
+        `Estimado(a) ${nombreCliente},`,
+        '',
+        'Le enviamos su factura electrónica correspondiente al servicio prestado.',
+        '',
+        'Detalles de la Factura:',
+        `- Folio: ${numeroFactura}`,
+        `- UUID: ${invoice.uuid}`,
+        `- Fecha de emisión: ${fechaEmisionFormateada}`,
+        `- Total: ${totalFormateado}`,
+        '',
+        'Archivos adjuntos: PDF y XML.',
+        '',
+        'Este es un correo automático, por favor no responder.'
+      ].join('\n');
+
+      // Registrar el recordatorio en el historial ANTES de enviar (estado Pendiente)
+      try {
+        const insertRecordatorioQuery = `
+          INSERT INTO Recordatorios (
+            FacturaId,
+            TipoMensaje,
+            Destinatario,
+            CC,
+            Asunto,
+            Mensaje,
+            FechaEnvio,
+            MetodoEnvio,
+            Estado,
+            CreadoPor
+          )
+          OUTPUT INSERTED.Id
+          VALUES (?, ?, ?, ?, ?, ?, GETDATE(), ?, ?, ?)
+        `;
+
+        const recordatorioResult = await db.query(insertRecordatorioQuery, [
+          facturaId,
+          'CORREO',
+          factura.ClienteEmail,
+          null,
+          asuntoCorreo,
+          mensajeCorreo,
+          'Automatico',
+          'Pendiente',
+          user.id || null
+        ]);
+
+        recordatorioId = recordatorioResult[0]?.Id ?? null;
+      } catch (recordatorioErr) {
+        console.error('Error al registrar recordatorio automático:', recordatorioErr);
+        // Continuar con el envío aunque falle el registro del historial
+      }
+
       try {
         // Convertir buffers de PDF y XML
         const pdfBuffer = Buffer.from(pdfResponse.data);
@@ -375,14 +493,11 @@ export const POST: RequestHandler = async (event) => {
           }
         });
 
-        const nombreCliente = factura.ClienteRazonSocial;
-        const numeroFactura = factura.numero_factura;
-
         // Configurar el correo
         const mailOptions = {
           from: `"${SMTP_FROM_NAME}" <${SMTP_FROM_EMAIL}>`,
           to: factura.ClienteEmail,
-          subject: `Factura ${numeroFactura} - ${nombreCliente}`,
+          subject: asuntoCorreo,
           html: `
             <!DOCTYPE html>
             <html>
@@ -457,12 +572,40 @@ export const POST: RequestHandler = async (event) => {
         };
 
         // Enviar el correo
-        await transporter.sendMail(mailOptions);
+        const info = await transporter.sendMail(mailOptions);
         emailEnviado = true;
+
+        // Marcar el recordatorio como Enviado y guardar el MessageId
+        if (recordatorioId) {
+          try {
+            await db.query(
+              `UPDATE Recordatorios
+               SET Estado = ?, MessageId = ?
+               WHERE Id = ?`,
+              ['Enviado', info.messageId || null, recordatorioId]
+            );
+          } catch (updateErr) {
+            console.error('Error al actualizar recordatorio como Enviado:', updateErr);
+          }
+        }
 
       } catch (emailErr) {
         console.error('Error al enviar correo automático:', emailErr);
         emailError = emailErr instanceof Error ? emailErr.message : 'Error desconocido';
+
+        // Marcar el recordatorio como Fallido con el detalle del error
+        if (recordatorioId) {
+          try {
+            await db.query(
+              `UPDATE Recordatorios
+               SET Estado = ?, ErrorMessage = ?
+               WHERE Id = ?`,
+              ['Fallido', emailError, recordatorioId]
+            );
+          } catch (updateErr) {
+            console.error('Error al actualizar recordatorio como Fallido:', updateErr);
+          }
+        }
         // No fallar el timbrado si falla el email
       }
     }
@@ -481,11 +624,23 @@ export const POST: RequestHandler = async (event) => {
     });
 
   } catch (error: any) {
-    console.error('Error al timbrar factura:', error);
+    console.error(`[TIMBRADO] === ERROR al timbrar factura (facturaId=${facturaId}) ===`);
+    console.error('[TIMBRADO] Mensaje:', error.message);
+    console.error('[TIMBRADO] Código:', error.code);
+    if (error.response) {
+      console.error('[TIMBRADO] HTTP status:', error.response.status, error.response.statusText);
+      console.error('[TIMBRADO] URL solicitada:', error.config?.url);
+      console.error('[TIMBRADO] Respuesta Facturapi:', JSON.stringify(error.response.data, null, 2));
+    }
+    if (error.stack) {
+      console.error('[TIMBRADO] Stack:', error.stack);
+    }
     return json({
       success: false,
       error: 'Error al timbrar y enviar la factura',
-      details: error.response?.data || error.message || 'Error desconocido'
+      details: error.response?.data || error.message || 'Error desconocido',
+      facturapiStatus: error.response?.status,
+      facturapiMessage: error.response?.data?.message
     }, { status: 500 });
   }
 };
