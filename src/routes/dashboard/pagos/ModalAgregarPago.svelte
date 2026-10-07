@@ -355,7 +355,7 @@
              data: [
                {
                  payment_form: metodoPago, // Ejemplo: '03' transferencia
-                 date: new Date(fechaPago).toISOString(),
+                 date: `${fechaPago}T12:00:00`,
                  related_documents: facturasConMontoYParcialidad.map(f => ({
                    uuid: f.uuid, // UUID de la factura original
                    amount: parseFloat(f.montoPago),
