@@ -229,6 +229,11 @@
     { name: 'Configuración', href: '/dashboard/configuracion', icon: Settings }
   ];
 
+  // La cuenta demo de expo no ve Contratos (todavía no lleva a ningún lado)
+  export let data: { demoOrganizacionId: number | null };
+  $: esDemo = !!data?.demoOrganizacionId && organizacionActual?.id === data.demoOrganizacionId;
+  $: menu = esDemo ? navigation.filter((item) => item.href !== '/dashboard/contratos') : navigation;
+
   // Función para verificar si una ruta está activa
   $: isActive = (href: string) => {
     if (href === '/dashboard') {
@@ -324,8 +329,8 @@
     
     <!-- Navegación -->
     <nav class="flex-1 px-4 py-6 space-y-2 overflow-y-auto">
-      {#each navigation as item}
-        <a 
+      {#each menu as item}
+        <a
           href={item.href} 
           class="group flex items-center gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 
             {isActive(item.href) 

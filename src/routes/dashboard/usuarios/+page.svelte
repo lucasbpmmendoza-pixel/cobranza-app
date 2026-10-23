@@ -48,10 +48,8 @@
 
   // Cargar datos iniciales
   onMount(async () => {
-    await verificarRolUsuario();
-    await cargarUsuarios();
-    await cargarOrganizaciones();
-    await cargarRoles();
+    // En paralelo: son independientes y cada una es un viaje a la BD
+    await Promise.all([verificarRolUsuario(), cargarUsuarios(), cargarOrganizaciones(), cargarRoles()]);
   });
 
   // Verificar si el usuario actual es administrador

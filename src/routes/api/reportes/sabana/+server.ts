@@ -3,6 +3,7 @@ import type { RequestHandler } from './$types';
 import sql from 'mssql';
 import { getConnection } from '$lib/server/db';
 import { requireOrganizationAccess } from '$lib/server/auth';
+import { esOrganizacionDemo } from '$lib/server/demo';
 import { clasificarConcepto, esConceptoPrueba, normalizarConcepto, type CategoriaId } from '$lib/reportes/categorias';
 
 // Estado 6 = Cancelada (ver por-cobrar)
@@ -139,7 +140,8 @@ export const GET: RequestHandler = async (event) => {
       }
     }
 
-    return json({ success: true, desde, hasta, lineas });
+    // demo: la cuenta de expo (berniluck) además ve prospectos y el botón Cobranza
+    return json({ success: true, desde, hasta, lineas, demo: esOrganizacionDemo(acceso.organizacionId) });
   } catch (error) {
     console.error('Error en reporte sábana:', error);
     return json(

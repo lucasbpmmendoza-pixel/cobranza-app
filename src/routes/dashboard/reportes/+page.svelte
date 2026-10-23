@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte';
-  import { Download, Search, TrendingUp, DollarSign, AlertTriangle, Users, XCircle } from 'lucide-svelte';
+  import { Download, Search, TrendingUp, DollarSign, AlertTriangle, Users, XCircle, Send } from 'lucide-svelte';
   import * as XLSX from 'xlsx';
   import Chart from 'chart.js/auto';
   import { authFetch } from '$lib/api';
@@ -21,7 +21,11 @@
     facturado: number;
     pagado: number;
     ultimoPago: string | null;
+    uuid?: string;
   };
+
+  type ClienteDemo = { clienteId: number; nombre: string; celular: string; real: boolean };
+  type ResultadoCobro = { clienteId: number; cliente: string; celular: string; estado: 'enviado' | 'simulado' | 'error'; detalle?: string };
 
   type Celda = { facturado: number; pagado: number; lineas: Linea[] };
   type Fila = {
@@ -59,6 +63,16 @@
   let detalleAbierto = false;
   let detalleTitulo = '';
   let detalleLineas: Linea[] = [];
+
+  // Cuenta demo de expo: clientes demo (para saber a quién le llega el mensaje)
+  let modoDemo = false;
+  let demoClientes: ClienteDemo[] = [];
+
+  // Cobranza por bot (demo)
+  let cobranzaAbierta = false;
+  let enviandoCobranza = false;
+  let errorCobranza: string | null = null;
+  let resultadosCobranza: ResultadoCobro[] = [];
 
   // Gráfica
   let canvasGrafica: HTMLCanvasElement;
@@ -115,6 +129,9 @@
       const data = await response.json();
       if (data.success) {
         lineas = data.lineas || [];
+        // Cuenta demo de expo: además se cargan sus clientes demo
+        modoDemo = !!data.demo;
+        if (modoDemo) await cargarDemo();
       } else {
         error = data.message || data.error || 'Error al generar el reporte';
         lineas = [];
@@ -125,6 +142,36 @@
     } finally {
       cargando = false;
     }
+  }
+
+  async function cargarDemo() {
+    const response = await authFetch(`/api/reportes/demo?organizacionId=${organizacionId}`);
+    const data = await response.json();
+    if (data.success) {
+      demoClientes = data.clientes || [];
+    }
+  }
+
+  // Un clic manda el mensaje a todos los clientes; el modal solo muestra cómo fue cada envío
+  async function enviarCobranza() {
+    resultadosCobranza = [];
+    cobranzaAbierta = true;
+    enviandoCobranza = true;
+    errorCobranza = null;
+    try {
+      const response = await authFetch(`/api/reportes/demo/cobranza?organizacionId=${organizacionId}`, { method: 'POST' });
+      const data = await response.json();
+      if (data.success) resultadosCobranza = data.resultados || [];
+      else errorCobranza = data.message || 'No se pudo enviar la cobranza';
+    } catch (err) {
+      errorCobranza = err instanceof Error ? err.message : 'Error desconocido';
+    } finally {
+      enviandoCobranza = false;
+    }
+  }
+
+  function clienteDemo(id: number): ClienteDemo | undefined {
+    return demoClientes.find((c) => c.clienteId === id);
   }
 
   // --- Cálculos derivados ---
@@ -177,6 +224,7 @@
     alCorriente: filas.filter((f) => f.debe <= 0.5).length
   };
   $: resumenDebe = Math.max(0, resumen.facturado - resumen.pagado);
+  $: deudores = filas.filter((f) => f.debe > 0.5);
   $: resumenPct = resumen.facturado > 0 ? (resumen.pagado / resumen.facturado) * 100 : 0;
 
   $: totalesMes = meses.map((mes) => {
@@ -344,7 +392,7 @@
     }));
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detalle), 'Detalle facturas');
 
-    XLSX.writeFile(wb, `Reporte cobranza ${rango.desde} a ${rango.hasta}.xlsx`);
+    XLSX.writeFile(wb, `Reporte cobranza${modoDemo ? ' DEMO' : ''} ${rango.desde} a ${rango.hasta}.xlsx`);
   }
 
   function redondear(n: number): number {
@@ -374,7 +422,10 @@
   <!-- Encabezado y periodo -->
   <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
     <div>
-      <h1 class="text-xl font-semibold text-gray-900">Reporte de cobranza</h1>
+      <h1 class="text-xl font-semibold text-gray-900">
+        Reporte de cobranza
+        {#if modoDemo}<span class="ml-2 align-middle text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">DEMO</span>{/if}
+      </h1>
       <p class="text-sm text-gray-600 mt-1">Qué meses ha pagado cada cliente en el periodo, separado por tipo de cobro.</p>
     </div>
     <div class="flex flex-wrap items-end gap-3">
@@ -591,6 +642,19 @@
       <canvas bind:this={canvasGrafica}></canvas>
     </div>
   </div>
+
+  {#if modoDemo}
+    <div class="bg-white rounded-xl shadow-sm border p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div>
+        <h2 class="text-base font-semibold text-gray-900">Cobranza automática</h2>
+        <p class="text-sm text-gray-600">{deudores.length} clientes deben {formatearMoneda(resumenDebe)} en el periodo. El bot les escribe por WhatsApp a todos: a los que deben con el UUID de cada factura y a los que están al corriente para agradecerles.</p>
+      </div>
+      <Button variant="danger" size="lg" on:click={enviarCobranza} loading={enviandoCobranza} disabled={cargando || enviandoCobranza}>
+        <Send class="w-5 h-5" />
+        Cobranza
+      </Button>
+    </div>
+  {/if}
 </div>
 
 <Modal open={detalleAbierto} title={detalleTitulo} size="lg" on:close={() => (detalleAbierto = false)}>
@@ -609,7 +673,12 @@
       {#each detalleLineas as l}
         <tr>
           <td class="px-3 py-2">
-            <a href="/dashboard/por-cobrar/{l.facturaId}" class="text-blue-600 hover:underline">{l.folio || `#${l.facturaId}`}</a>
+            {#if l.uuid}
+              <div class="font-medium text-gray-800">{l.folio}</div>
+              <div class="text-[11px] text-gray-500 font-mono">{l.uuid}</div>
+            {:else}
+              <a href="/dashboard/por-cobrar/{l.facturaId}" class="text-blue-600 hover:underline">{l.folio || `#${l.facturaId}`}</a>
+            {/if}
           </td>
           <td class="px-3 py-2 whitespace-nowrap">{formatearFecha(l.fecha)}</td>
           <td class="px-3 py-2">
@@ -623,4 +692,43 @@
       {/each}
     </tbody>
   </table>
+</Modal>
+
+<Modal open={cobranzaAbierta} title="Cobranza por WhatsApp" size="lg" on:close={() => (cobranzaAbierta = false)}>
+  <div class="space-y-4">
+    <p class="text-sm text-gray-600">
+      {enviandoCobranza ? 'Enviando mensajes a todos los clientes…' : 'Así quedó el envío. A los celulares ficticios solo se les simula.'}
+    </p>
+    <div class="border rounded-lg divide-y max-h-[50vh] overflow-auto">
+      {#each demoClientes as c (c.clienteId)}
+        {@const debe = filas.find((f) => f.clienteId === c.clienteId)?.debe || 0}
+        {@const r = resultadosCobranza.find((x) => x.clienteId === c.clienteId)}
+        <div class="flex items-center gap-3 px-3 py-2 text-sm">
+          <div class="flex-1 min-w-0">
+            <div class="font-medium text-gray-900 truncate">{c.nombre}</div>
+            <div class="text-xs text-gray-500">
+              {c.celular || '—'}
+              <span class="ml-1 px-1.5 py-0.5 rounded {c.real ? 'bg-green-100 text-green-800' : 'bg-gray-100 text-gray-600'}">{c.real ? 'Real' : 'Ficticio'}</span>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="font-semibold whitespace-nowrap {debe > 0.5 ? 'text-red-600' : 'text-green-700'}">{debe > 0.5 ? formatearMoneda(debe) : 'Al corriente'}</div>
+            {#if r}
+              <div class="text-xs {r.estado === 'enviado' ? 'text-green-700' : r.estado === 'simulado' ? 'text-gray-500' : 'text-red-600'}" title={r.detalle || ''}>
+                {r.estado === 'enviado' ? 'Enviado ✓' : r.estado === 'simulado' ? 'Simulado' : `Error: ${r.detalle || ''}`}
+              </div>
+            {:else if enviandoCobranza}
+              <div class="text-xs text-gray-400">Enviando…</div>
+            {/if}
+          </div>
+        </div>
+      {/each}
+    </div>
+    {#if errorCobranza}
+      <div class="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-sm">{errorCobranza}</div>
+    {/if}
+    <div class="flex justify-end">
+      <Button variant="outline" on:click={() => (cobranzaAbierta = false)} disabled={enviandoCobranza}>Cerrar</Button>
+    </div>
+  </div>
 </Modal>

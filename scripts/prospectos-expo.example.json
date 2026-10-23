@@ -1,0 +1,4 @@
+[
+  { "nombre": "Ana López", "celular": "6561234567", "correo": "ana@gmail.com", "empresa": "Abarrotes Ana" },
+  { "nombre": "Juan Pérez", "celular": "6567654321", "correo": "", "empresa": "" }
+]

@@ -21,3 +21,6 @@ Thumbs.db
 # Vite
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# Datos personales de prospectos de la expo (demo)
+scripts/prospectos-expo.json
