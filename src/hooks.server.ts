@@ -5,6 +5,7 @@ import { verifyToken } from '$lib/server/auth';
 // Lista de rutas públicas que NO requieren autenticación
 const PUBLIC_ROUTES = [
 	'/api/login',
+	'/api/demo-acceso', // pase firmado de la demo de AICuenta (lo valida el propio endpoint)
 	// '/api/auth/register',
 	// '/api/test-db', // Solo para desarrollo, remover en producción
 	//   '/api/analyze-db', // Solo para desarrollo, remover en producción

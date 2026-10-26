@@ -10,13 +10,12 @@ import sql from 'mssql';
 import bcrypt from 'bcryptjs';
 import 'dotenv/config';
 import {
-  DEMO_SLOTS, SLOT_VENDEDOR, EMPRESAS, rfcSlot, celularFicticio, normalizarCelular, generarFacturas
+  DEMO_SLOTS, SLOT_VENDEDOR, EMPRESAS, rfcSlot, celularFicticio, normalizarCelular
 } from '../src/lib/server/demo-datos.js';
+import { borrarClientesExtra, insertarFacturas } from './lib-demo.mjs';
 
 const CORREO = 'berniluck@gmail.com';
 const ORGANIZACION = 'DEMO EXPO COBRANZA';
-const DIAS_CREDITO = 30;
-const ESTADO = { vigente: 1, parcial: 2, pagada: 3, vencida: 4 };
 
 const contrasena = process.argv[2];
 
@@ -130,52 +129,13 @@ await pool.request().input('o', sql.Int, org.Id).query(`
   DELETE f FROM Facturas f INNER JOIN Clientes c ON f.ClienteId = c.Id WHERE c.OrganizacionId = @o;
 `);
 
-const hoy = new Date();
+// Clientes extra que se crearon en una expo (lugar > DEMO_SLOTS): se quitan
+const extras = await borrarClientesExtra(pool, org.Id);
+if (extras) console.log(`✓ Se quitaron ${extras} clientes demo extra`);
+
 let total = 0;
 for (const c of clientes) {
-  for (const f of generarFacturas(c.slot, hoy)) {
-    const vencimiento = new Date(f.emision.getTime() + DIAS_CREDITO * 86400000);
-    const saldo = f.monto - f.pagado;
-    const diasVencido = saldo > 0 ? Math.max(0, Math.floor((hoy - vencimiento) / 86400000)) : 0;
-    const estado = saldo <= 0 ? ESTADO.pagada : f.pagado > 0 ? ESTADO.parcial : diasVencido > 0 ? ESTADO.vencida : ESTADO.vigente;
-    const subtotal = Math.round((f.monto / 1.16) * 100) / 100;
-
-    await pool.request()
-      .input('cliente', sql.Int, c.id)
-      .input('usuario', sql.Int, usuario.Id)
-      .input('monto', sql.Decimal(18, 2), f.monto)
-      .input('saldo', sql.Decimal(18, 2), saldo)
-      .input('pagado', sql.Decimal(18, 2), f.pagado)
-      .input('emision', sql.DateTime, f.emision)
-      .input('vencimiento', sql.DateTime, vencimiento)
-      .input('fechaPago', sql.DateTime, f.fechaPago)
-      .input('dias', sql.Int, diasVencido)
-      .input('estado', sql.Int, estado)
-      .input('folio', sql.VarChar, f.folio)
-      .input('uuid', sql.NVarChar, f.uuid)
-      .input('concepto', sql.NVarChar, f.concepto)
-      .input('subtotal', sql.Decimal(18, 2), subtotal)
-      .input('impuestos', sql.Decimal(18, 2), Math.round((f.monto - subtotal) * 100) / 100)
-      .query(`
-        DECLARE @id INT;
-        INSERT INTO Facturas (
-          ClienteId, MontoTotal, SaldoPendiente, FechaEmision, FechaVencimiento, DiasVencido,
-          estado_factura_id, prioridad_cobranza_id, numero_factura, Moneda, TipoCambio, CondicionesPago,
-          MetodoPago, FormaPago, UsoCFDI, UUID, Timbrado, FechaTimbrado, FechaUltimoPago, UsuarioCreadorId, CreatedAt
-        ) VALUES (
-          @cliente, @monto, @saldo, @emision, @vencimiento, @dias,
-          @estado, 2, @folio, 'MXN', 1, '30-dias',
-          'PPD', '99', 'G03', @uuid, 1, @emision, CAST(@fechaPago AS DATE), @usuario, @emision
-        );
-        SET @id = SCOPE_IDENTITY();
-        INSERT INTO ConceptosFactura (FacturaId, Nombre, ClaveProdServ, UnidadMedida, Cantidad, PrecioUnitario, Subtotal, ObjetoImpuesto, TotalImpuestos, Total)
-        VALUES (@id, @concepto, '84111500', 'E48', 1, @subtotal, @subtotal, '02', @impuestos, @monto);
-        IF @pagado > 0
-          INSERT INTO Pagos (FacturaId, UsuarioId, Monto, FechaPago, Metodo)
-          VALUES (@id, @usuario, @pagado, @fechaPago, '03');
-      `);
-    total++;
-  }
+  total += await insertarFacturas(pool, c.id, c.slot, usuario.Id);
   process.stdout.write(`\r✓ Facturas generadas: ${total}`);
 }
 

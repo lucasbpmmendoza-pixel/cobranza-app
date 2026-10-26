@@ -21,6 +21,15 @@ export const EMPRESAS = [
   'Clínica Dental Demo'
 ];
 
+/**
+ * Nombre de empresa ficticia del lugar; los lugares extra (más allá de DEMO_SLOTS,
+ * creados cuando llegan más prospectos) se numeran.
+ * @param {number} slot
+ */
+export function empresaDe(slot) {
+  return EMPRESAS[slot - 1] || `Cliente Demo ${slot}`;
+}
+
 /** RFC ficticio que identifica el lugar de cada cliente demo */
 /** @param {number} slot */
 export function rfcSlot(slot) {
@@ -91,11 +100,11 @@ export function perfilDe(slot) {
 /**
  * @param {number} slot
  * @param {Date} [hoy]
+ * @param {'malo' | 'medio' | 'bueno'} [perfil] por omisión el del lugar (perfilDe)
  */
-export function generarFacturas(slot, hoy = new Date()) {
+export function generarFacturas(slot, hoy = new Date(), perfil = perfilDe(slot)) {
   const r = mulberry32(slot * 104729);
   const iguala = (6 + Math.floor(r() * 20)) * 500; // $3,000 – $12,500
-  const perfil = perfilDe(slot);
   // Meses recientes sin pagar (malos) o pagados a medias (medios)
   const atraso = perfil === 'malo' ? 6 + Math.floor(r() * 4) : perfil === 'medio' ? 2 + (slot % 2) : 0;
   const actual = hoy.getFullYear() * 12 + hoy.getMonth();

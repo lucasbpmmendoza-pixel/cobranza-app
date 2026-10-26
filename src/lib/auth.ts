@@ -122,6 +122,18 @@ export async function loginExterno(correo: string, contrasena: string) {
             throw new Error(data.error || 'Error en el login');
         }
 
+        return await guardarSesion(data);
+    } catch (error) {
+        throw error;
+    }
+}
+
+/**
+ * Guarda la sesión que regresa /api/login (o /api/demo-acceso) y completa los datos
+ * de organización del usuario.
+ */
+export async function guardarSesion(data: { token: string; usuario: any }) {
+    try {
         // Guardar token y datos básicos
         if (typeof window !== 'undefined') {
             sessionStorage.setItem('jwt', data.token);
