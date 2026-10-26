@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount, onDestroy, tick } from 'svelte';
   import { Download, Search, TrendingUp, DollarSign, AlertTriangle, Users, XCircle, Send } from 'lucide-svelte';
-  import * as XLSX from 'xlsx';
+  import { crearLibro, descargarLibro } from '$lib/reportes/excel';
   import Chart from 'chart.js/auto';
   import { authFetch } from '$lib/api';
   import { Button, Modal } from '$lib/components/ui';
@@ -286,7 +286,6 @@
     vacio: 'text-gray-300'
   };
   const iconoEstado = { pagado: '✓', parcial: '◐', pendiente: '✕', vacio: '—' };
-  const textoEstado = { pagado: 'Pagado', parcial: 'Parcial', pendiente: 'Sin pagar', vacio: '' };
 
   function formatearMoneda(n: number): string {
     return new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 }).format(n || 0);
@@ -329,74 +328,42 @@
   }
 
   // --- Exportar a Excel ---
+  // Con los mismos colores de la página (✓ ◐ ✕); ver $lib/reportes/excel.ts
   function exportarExcel() {
-    const wb = XLSX.utils.book_new();
     const etiquetas = meses.map((m) => etiquetaMes(m, mostrarAnioEnMes));
-
-    // Hoja de resumen por categoría y mes
-    const resumenFilas: any[][] = [['Categoría', ...etiquetas.flatMap((e) => [`${e} facturado`, `${e} cobrado`]), 'Total facturado', 'Total cobrado', 'Pendiente', '% cobrado']];
-    for (const c of CATEGORIAS) {
-      const ls = lineas.filter((l) => l.categoria === c.id);
-      if (ls.length === 0) continue;
-      const porMes = meses.flatMap((m) => {
-        const lm = ls.filter((l) => l.mes === m);
-        return [redondear(lm.reduce((s, l) => s + l.facturado, 0)), redondear(lm.reduce((s, l) => s + l.pagado, 0))];
-      });
-      const fac = ls.reduce((s, l) => s + l.facturado, 0);
-      const pag = ls.reduce((s, l) => s + l.pagado, 0);
-      resumenFilas.push([c.nombre, ...porMes, redondear(fac), redondear(pag), redondear(fac - pag), fac > 0 ? redondear((pag / fac) * 100) : 0]);
-    }
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumenFilas), 'Resumen');
+    const resumenCategorias = CATEGORIAS
+      .map((c) => ({ c, ls: lineas.filter((l) => l.categoria === c.id) }))
+      .filter(({ ls }) => ls.length > 0)
+      .map(({ c, ls }) => ({
+        categoria: c.nombre,
+        porMes: meses.map((m) => {
+          const lm = ls.filter((l) => l.mes === m);
+          return { facturado: lm.reduce((s, l) => s + l.facturado, 0), pagado: lm.reduce((s, l) => s + l.pagado, 0) };
+        })
+      }));
 
     // Una sábana por categoría con datos (más "Todas")
     const hojas: { id: CategoriaId | 'todas'; nombre: string }[] = [{ id: 'todas', nombre: 'Todas' }, ...CATEGORIAS];
-    for (const h of hojas) {
-      const ls = h.id === 'todas' ? lineas : lineas.filter((l) => l.categoria === h.id);
-      if (ls.length === 0) continue;
-      const fs = construirFilas(ls, '', false);
-      const aoa: any[][] = [['Cliente', 'RFC', ...etiquetas, 'Facturado', 'Pagado', 'Debe']];
-      for (const f of fs) {
-        aoa.push([
-          f.cliente,
-          f.rfc,
-          ...meses.map((m) => {
-            const c = f.celdas[m];
-            const e = estadoCelda(c);
-            if (e === 'vacio') return '';
-            if (e === 'pagado') return `Pagado ${formatearMoneda(c!.facturado)}`;
-            return `${textoEstado[e]} (debe ${formatearMoneda(c!.facturado - c!.pagado)})`;
-          }),
-          redondear(f.facturado),
-          redondear(f.pagado),
-          redondear(f.debe)
-        ]);
-      }
-      const ws = XLSX.utils.aoa_to_sheet(aoa);
-      ws['!cols'] = [{ wch: 40 }, { wch: 15 }, ...meses.map(() => ({ wch: 22 })), { wch: 14 }, { wch: 14 }, { wch: 14 }];
-      XLSX.utils.book_append_sheet(wb, ws, h.nombre.replace(/[\\/?*[\]:]/g, '-').slice(0, 31));
-    }
+    const sabanas = hojas
+      .map((h) => ({ nombre: h.nombre, ls: h.id === 'todas' ? lineas : lineas.filter((l) => l.categoria === h.id) }))
+      .filter(({ ls }) => ls.length > 0)
+      .map(({ nombre, ls }) => ({ nombre, filas: construirFilas(ls, '', false) }));
 
-    // Detalle de facturas
-    const detalle = lineas.map((l) => ({
-      Mes: l.mes,
-      Fecha: formatearFecha(l.fecha),
-      Folio: l.folio,
-      Cliente: l.cliente,
-      RFC: l.rfc,
-      Categoría: nombreCategoria(l.categoria),
-      Conceptos: l.conceptos,
-      Facturado: redondear(l.facturado),
-      Pagado: redondear(l.pagado),
-      Pendiente: redondear(l.facturado - l.pagado),
-      'Último pago': formatearFecha(l.ultimoPago)
-    }));
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detalle), 'Detalle facturas');
-
-    XLSX.writeFile(wb, `Reporte cobranza${modoDemo ? ' DEMO' : ''} ${rango.desde} a ${rango.hasta}.xlsx`);
-  }
-
-  function redondear(n: number): number {
-    return Math.round(n * 100) / 100;
+    const titulo = `Reporte de cobranza${modoDemo ? ' DEMO' : ''}`;
+    const wb = crearLibro(
+      {
+        titulo,
+        periodo: `${etiquetaMes(rango.desde, true)} – ${etiquetaMes(rango.hasta, true)}`,
+        meses,
+        etiquetas,
+        resumen: resumenCategorias,
+        sabanas,
+        detalle: lineas
+      },
+      nombreCategoria,
+      formatearFecha
+    );
+    descargarLibro(wb, `${titulo} ${rango.desde} a ${rango.hasta}.xlsx`);
   }
 
   // Recargar al cambiar de organización
