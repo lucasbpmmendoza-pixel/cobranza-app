@@ -411,6 +411,40 @@ export const DELETE: RequestHandler = async (event) => {
 
     const factura = facturaResult.recordset[0];
 
+    // Una factura origen de recurrencia solo se puede eliminar si ya está cancelada,
+    // ya sea en el sistema (estado 6) o en Facturapi
+    if (factura.estado_factura_id !== 6) {
+      const recurrentesResult = await pool.request()
+        .input('FacturaId', sql.Int, facturaId)
+        .query(`SELECT COUNT(*) as Total FROM Facturas WHERE FacturaOrigenId = @FacturaId`);
+
+      const totalRecurrentes = Number(recurrentesResult.recordset[0]?.Total || 0);
+
+      let canceladaEnFacturapi = false;
+      if (totalRecurrentes > 0 && factura.FacturapiId && factura.FacturapiKey) {
+        try {
+          const { data } = await axios.get(
+            `https://www.facturapi.io/v2/invoices/${factura.FacturapiId}`,
+            {
+              headers: {
+                Authorization: `Bearer ${factura.FacturapiKey}`
+              }
+            }
+          );
+          canceladaEnFacturapi = data?.status === 'canceled';
+        } catch {
+          canceladaEnFacturapi = false;
+        }
+      }
+
+      if (totalRecurrentes > 0 && !canceladaEnFacturapi) {
+        return json({
+          success: false,
+          error: `No se puede eliminar: es la factura origen de ${totalRecurrentes} factura(s) recurrente(s). Cancélala primero y después elimínala.`
+        }, { status: 400 });
+      }
+    }
+
     const pagosResult = await pool.request()
       .input('FacturaId', sql.Int, facturaId)
       .query(`
@@ -515,6 +549,9 @@ export const DELETE: RequestHandler = async (event) => {
     await new sql.Request(transaction)
       .input('FacturaId', sql.Int, facturaId)
       .query(`
+        IF OBJECT_ID('ComprobantesRecibidos', 'U') IS NOT NULL
+          DELETE FROM ComprobantesRecibidos WHERE FacturaId = @FacturaId;
+
         DELETE FROM Pagos WHERE FacturaId = @FacturaId;
 
         DELETE FROM ImpuestosConcepto
@@ -534,6 +571,10 @@ export const DELETE: RequestHandler = async (event) => {
           DELETE FROM GestionesCobranza WHERE FacturaId = @FacturaId;
 
         DELETE FROM ConceptosFactura WHERE FacturaId = @FacturaId;
+
+        -- Las facturas generadas por recurrencia se conservan, solo se desligan de su origen
+        UPDATE Facturas SET FacturaOrigenId = NULL WHERE FacturaOrigenId = @FacturaId;
+
         DELETE FROM Facturas WHERE Id = @FacturaId;
       `);
 

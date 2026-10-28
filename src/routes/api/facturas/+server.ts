@@ -767,8 +767,19 @@ export const DELETE: RequestHandler = async (event) => {
 
       // Eliminar dependencias primero
       await deleteRequest(`DELETE FROM Recordatorios WHERE FacturaId IN (${placeholders})`);
+      await deleteRequest(`
+        IF OBJECT_ID('RecordatoriosProgramados', 'U') IS NOT NULL
+          DELETE FROM RecordatoriosProgramados WHERE FacturaId IN (${placeholders});
+        IF OBJECT_ID('GestionesCobranza', 'U') IS NOT NULL
+          DELETE FROM GestionesCobranza WHERE FacturaId IN (${placeholders});
+        IF OBJECT_ID('ComprobantesRecibidos', 'U') IS NOT NULL
+          DELETE FROM ComprobantesRecibidos WHERE FacturaId IN (${placeholders});
+      `);
       await deleteRequest(`DELETE FROM Pagos WHERE FacturaId IN (${placeholders})`);
+      await deleteRequest(`DELETE FROM ImpuestosConcepto WHERE ConceptoId IN (SELECT Id FROM ConceptosFactura WHERE FacturaId IN (${placeholders}))`);
       await deleteRequest(`DELETE FROM ConceptosFactura WHERE FacturaId IN (${placeholders})`);
+      // Las facturas generadas por recurrencia se conservan, solo se desligan de su origen cancelado
+      await deleteRequest(`UPDATE Facturas SET FacturaOrigenId = NULL WHERE FacturaOrigenId IN (${placeholders})`);
       await deleteRequest(`DELETE FROM Facturas WHERE Id IN (${placeholders})`);
 
       await transaction.commit();
