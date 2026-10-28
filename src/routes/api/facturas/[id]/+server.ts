@@ -37,6 +37,34 @@ async function cancelarDocumentoFacturapi(documentoId: string, apiKey: string, m
       return 'ya_cancelada';
     }
 
+    // Facturapi responde "No puedes cancelar una factura con este estatus" sin decir cuál;
+    // consultamos el estatus real para distinguir una factura ya cancelada.
+    try {
+      const { data } = await axios.get(
+        `https://www.facturapi.io/v2/invoices/${documentoId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${apiKey}`
+          }
+        }
+      );
+
+      if (data?.status === 'canceled' || data?.cancellation_status === 'accepted') {
+        return 'ya_cancelada';
+      }
+
+      if (data?.cancellation_status === 'pending') {
+        throw new Error('La cancelación de esta factura está pendiente de aceptación por el receptor en el SAT. Intenta eliminarla cuando se haya aceptado.');
+      }
+    } catch (consultaError: any) {
+      if (consultaError.response?.status === 404) {
+        return 'no_encontrada';
+      }
+      if (!consultaError.response) {
+        throw consultaError;
+      }
+    }
+
     throw new Error(message);
   }
 }
