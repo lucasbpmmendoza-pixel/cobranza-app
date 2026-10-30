@@ -5,6 +5,7 @@ declare global {
         id: number;
         correo: string;
         organizacion?: number;
+        soloLectura?: boolean;
       };
     }
 

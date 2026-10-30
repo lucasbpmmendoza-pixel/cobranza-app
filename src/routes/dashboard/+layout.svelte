@@ -232,7 +232,28 @@
   // La cuenta demo de expo no ve Contratos (todavía no lleva a ningún lado)
   export let data: { demoOrganizacionId: number | null };
   $: esDemo = !!data?.demoOrganizacionId && organizacionActual?.id === data.demoOrganizacionId;
-  $: menu = esDemo ? navigation.filter((item) => item.href !== '/dashboard/contratos') : navigation;
+
+  // Demo de solo lectura (desde AICuenta): tampoco ve lo que solo sirve para hacer cambios
+  const OCULTAS_SOLO_LECTURA = ['/dashboard/contratos', '/dashboard/usuarios', '/dashboard/configuracion'];
+  let soloLectura = false;
+  let avisoSoloLectura = '';
+  let avisoTimer: ReturnType<typeof setTimeout>;
+  function mostrarAvisoSoloLectura(e: Event) {
+    avisoSoloLectura = (e as CustomEvent<string>).detail || 'Demo de solo lectura: puedes consultar y descargar.';
+    clearTimeout(avisoTimer);
+    avisoTimer = setTimeout(() => (avisoSoloLectura = ''), 4000);
+  }
+  onMount(() => {
+    try {
+      soloLectura = !!JSON.parse(sessionStorage.getItem('userData') || '{}').soloLectura;
+    } catch {}
+    window.addEventListener('demo-solo-lectura', mostrarAvisoSoloLectura);
+    return () => window.removeEventListener('demo-solo-lectura', mostrarAvisoSoloLectura);
+  });
+
+  $: menu = soloLectura
+    ? navigation.filter((item) => !OCULTAS_SOLO_LECTURA.includes(item.href))
+    : esDemo ? navigation.filter((item) => item.href !== '/dashboard/contratos') : navigation;
 
   // Función para verificar si una ruta está activa
   $: isActive = (href: string) => {
@@ -304,6 +325,7 @@
             {/each}
 
             <!-- Botón agregar organización -->
+            {#if !soloLectura}
             <a
               href="/dashboard/organizaciones/nueva"
               class="w-full px-3 py-2.5 text-left hover:bg-slate-700/50 transition-colors flex items-center gap-3 border-t border-slate-600"
@@ -314,6 +336,7 @@
               </div>
               <p class="text-xs font-medium text-blue-400">Agregar organización</p>
             </a>
+            {/if}
           </div>
         {/if}
       </div>
@@ -367,7 +390,8 @@
         </div>
       </div>
       
-      <!-- Botón logout -->
+      <!-- Botón logout (la demo de solo lectura no cierra sesión, igual que la demo de AICuenta) -->
+      {#if !soloLectura}
       <button
         class="flex items-center gap-3 w-full bg-gradient-to-r from-red-600 to-red-700 hover:from-red-700 hover:to-red-800 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-200 hover:shadow-lg hover:shadow-red-500/25 group"
         on:click={logout}
@@ -375,6 +399,7 @@
         <LogOut class="w-5 h-5 transition-transform duration-200 group-hover:scale-105" />
         <span>Cerrar Sesión</span>
       </button>
+      {/if}
     </div>
   </aside>
 
@@ -415,11 +440,22 @@
     <!-- Main content -->
     <main class="flex-1 bg-gradient-to-br from-slate-50 to-blue-50">
       <div class="p-4 sm:p-6 lg:p-8 max-w-7xl mx-auto">
+        {#if soloLectura}
+          <div class="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+            <strong>Demo de solo lectura.</strong> Los datos son ficticios: puedes navegar, consultar y descargar, pero no hacer cambios.
+          </div>
+        {/if}
         <slot />
       </div>
     </main>
   </div>
 </div>
+
+{#if avisoSoloLectura}
+  <div class="fixed bottom-6 left-1/2 -translate-x-1/2 z-[110] max-w-md rounded-xl bg-slate-900 px-4 py-3 text-sm text-white shadow-xl" role="status">
+    {avisoSoloLectura}
+  </div>
+{/if}
 
 <!-- Overlay de carga al cambiar organización -->
 {#if cambiandoOrganizacion}

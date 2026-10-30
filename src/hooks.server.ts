@@ -1,6 +1,7 @@
 import { json } from '@sveltejs/kit';
 import type { Handle } from '@sveltejs/kit';
 import { verifyToken } from '$lib/server/auth';
+import { revisarSoloLectura } from '$lib/server/demo-lectura';
 
 // Lista de rutas públicas que NO requieren autenticación
 const PUBLIC_ROUTES = [
@@ -54,6 +55,12 @@ export const handle: Handle = async ({ event, resolve }) => {
 						headers: { 'Content-Type': 'application/json' }
 					}
 				);
+			}
+
+			// Demo de solo lectura: solo consultar y descargar de su organización
+			if (user.soloLectura) {
+				const rechazo = revisarSoloLectura(event, user);
+				if (rechazo) return rechazo;
 			}
 
 			// Adjuntar usuario al evento para usarlo en los endpoints

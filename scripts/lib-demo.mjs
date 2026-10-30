@@ -24,8 +24,11 @@ export async function idUsuarioDemo(pool) {
   return r.recordset[0].Id;
 }
 
-/** Crea las facturas, conceptos y pagos ficticios de un cliente demo según su perfil */
-export async function insertarFacturas(pool, clienteId, slot, usuarioId, perfil, hoy = new Date()) {
+/**
+ * Crea las facturas, conceptos y pagos ficticios de un cliente demo según su perfil.
+ * El folio es único en toda la BD: otra organización demo usa otro prefijo en lugar de "DEMO-".
+ */
+export async function insertarFacturas(pool, clienteId, slot, usuarioId, perfil, hoy = new Date(), prefijoFolio = 'DEMO-') {
   let total = 0;
   for (const f of generarFacturas(slot, hoy, perfil)) {
     const vencimiento = new Date(f.emision.getTime() + DIAS_CREDITO * 86400000);
@@ -45,7 +48,7 @@ export async function insertarFacturas(pool, clienteId, slot, usuarioId, perfil,
       .input('fechaPago', sql.DateTime, f.fechaPago)
       .input('dias', sql.Int, diasVencido)
       .input('estado', sql.Int, estado)
-      .input('folio', sql.VarChar, f.folio)
+      .input('folio', sql.VarChar, f.folio.replace(/^DEMO-/, prefijoFolio))
       .input('uuid', sql.NVarChar, f.uuid)
       .input('concepto', sql.NVarChar, f.concepto)
       .input('subtotal', sql.Decimal(18, 2), subtotal)

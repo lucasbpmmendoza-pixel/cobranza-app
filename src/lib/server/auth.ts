@@ -10,6 +10,8 @@ export interface JWTPayload {
 	id: number;
 	correo: string;
 	organizacion?: number;
+	/** Sesión de la demo pública (ver demo-lectura.ts) */
+	soloLectura?: boolean;
 }
 
 // Verificar y decodificar token JWT

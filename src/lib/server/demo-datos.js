@@ -2,6 +2,8 @@
 // tanto la app como scripts/crear-demo-berniluck.mjs.
 
 export const DEMO_SLOTS = 12;
+/** Cuenta de la demo de solo lectura (scripts/crear-demo-lectura.mjs); nadie entra con contraseña */
+export const CORREO_DEMO_LECTURA = 'demo-lectura@cobranza.demo';
 /** El lugar 1 es el celular del vendedor (DEMO_CELULAR_REAL), no se asigna a prospectos */
 export const SLOT_VENDEDOR = 1;
 export const PRIMER_MES = '2025-01';
