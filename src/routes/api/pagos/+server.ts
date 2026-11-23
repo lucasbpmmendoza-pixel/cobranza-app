@@ -33,7 +33,7 @@ export const GET: RequestHandler = async ({ url }) => {
           cl.RazonSocial LIKE @cliente OR
           cl.NombreComercial LIKE @cliente OR
           cl.RFC LIKE @cliente OR
-          f.numero_factura LIKE @cliente OR
+          COALESCE(NULLIF(f.NumeroFacturaFacturapi, ''), f.numero_factura) LIKE @cliente OR
           f.UUID LIKE @cliente OR
           f.UUIDFacturapi LIKE @cliente OR
           CAST(p.Id AS VARCHAR) LIKE @cliente
@@ -58,7 +58,7 @@ export const GET: RequestHandler = async ({ url }) => {
         p.Metodo as metodo,
         p.CreatedAt as createdAt,
         p.UpdatedAt as updatedAt,
-        f.numero_factura as numero_factura,
+        COALESCE(NULLIF(f.NumeroFacturaFacturapi, ''), f.numero_factura) as numero_factura,
         f.MontoTotal as montoFactura,
         f.SaldoPendiente as saldoPendiente,
         f.FechaEmision as fechaEmision,

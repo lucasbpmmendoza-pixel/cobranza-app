@@ -42,7 +42,8 @@ export const GET: RequestHandler = async (event) => {
 
     // Mapeo de nombres de campo del frontend a nombres de BD
     const camposBD: { [key: string]: string } = {
-      'numero_factura': 'f.numero_factura',
+      // Ordena por el número del folio facturado (el que ve cobranza), no por el interno
+      'numero_factura': "TRY_CAST(SUBSTRING(COALESCE(NULLIF(f.NumeroFacturaFacturapi, ''), f.numero_factura), CHARINDEX('-', COALESCE(NULLIF(f.NumeroFacturaFacturapi, ''), f.numero_factura)) + 1, 20) AS INT)",
       'MontoTotal': 'f.MontoTotal',
       'SaldoPendiente': 'f.SaldoPendiente',
       'CreatedAt': 'f.CreatedAt',
@@ -80,7 +81,7 @@ export const GET: RequestHandler = async (event) => {
         c.RazonSocial LIKE ? OR
         c.NombreComercial LIKE ? OR
         c.RFC LIKE ? OR
-        f.numero_factura LIKE ? OR
+        COALESCE(NULLIF(f.NumeroFacturaFacturapi, ''), f.numero_factura) LIKE ? OR
         f.UUID LIKE ? OR
         f.UUIDFacturapi LIKE ? OR
         f.Identificador LIKE ?
@@ -154,7 +155,7 @@ export const GET: RequestHandler = async (event) => {
       SELECT
         f.Id,
         f.ClienteId,
-        f.numero_factura,
+        COALESCE(NULLIF(f.NumeroFacturaFacturapi, ''), f.numero_factura) as numero_factura,
         f.NumeroFacturaFacturapi,
         f.MontoTotal,
         f.MontoTotal - ISNULL(pagos.TotalPagado, 0) as SaldoPendienteCalculado,
@@ -178,7 +179,17 @@ export const GET: RequestHandler = async (event) => {
         pc.codigo as PrioridadCodigo,
         pc.id as PrioridadId,
         (SELECT TOP 1 Nombre FROM ConceptosFactura WHERE FacturaId = f.Id ORDER BY Id) as PrimerConceptoNombre,
-        (SELECT TOP 1 ClaveProdServ FROM ConceptosFactura WHERE FacturaId = f.Id ORDER BY Id) as PrimerConceptoClave
+        (SELECT TOP 1 ClaveProdServ FROM ConceptosFactura WHERE FacturaId = f.Id ORDER BY Id) as PrimerConceptoClave,
+        -- Otras facturas vigentes de la organización con el MISMO folio real del CFDI
+        -- (historial DMM con dos contadores). Solo informativo para cobranza.
+        CASE WHEN f.NumeroFacturaFacturapi IS NULL OR f.NumeroFacturaFacturapi = '' THEN 0 ELSE (
+          SELECT COUNT(*) FROM Facturas fr
+          INNER JOIN Clientes cr ON fr.ClienteId = cr.Id
+          WHERE fr.NumeroFacturaFacturapi = f.NumeroFacturaFacturapi
+            AND fr.Id <> f.Id
+            AND cr.OrganizacionId = c.OrganizacionId
+            AND ISNULL(fr.estado_factura_id, 0) <> 6
+        ) END as FolioRepetidoCount
       FROM Facturas f
       INNER JOIN Clientes c ON f.ClienteId = c.Id
       LEFT JOIN Regimen r ON c.RegimenFiscalId = r.ID_Regimen
@@ -273,6 +284,7 @@ export const GET: RequestHandler = async (event) => {
       clienteId: factura.ClienteId,
       numeroFactura: factura.numero_factura,
       numeroFacturaFacturapi: factura.NumeroFacturaFacturapi,
+      folioRepetido: (factura.FolioRepetidoCount || 0) > 0,
       montoTotal: parseFloat(factura.MontoTotal || 0),
       saldoPendiente: saldoCalculado,
       fechaEmision: factura.FechaEmision,

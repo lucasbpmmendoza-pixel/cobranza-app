@@ -478,6 +478,9 @@
               </button>
             </div>
             <h1 class="text-2xl font-bold text-gray-900">Factura {factura.numero_factura_facturapi || factura.numero_factura}</h1>
+            {#if factura.foliosRepetidos?.length}
+              <span class="px-2 py-0.5 text-xs font-semibold rounded bg-amber-100 text-amber-800">Folio repetido</span>
+            {/if}
           </div>
 
           <div class="flex gap-3">
@@ -507,6 +510,29 @@
 
     <!-- Contenido principal -->
     <div class="max-w-7xl mx-auto px-6 py-6">
+      {#if factura.foliosRepetidos?.length}
+        <!-- Historial DMM: el mismo folio del CFDI quedó en dos facturas distintas -->
+        <div class="mb-6 p-4 rounded-lg border border-amber-200 bg-amber-50 text-sm text-amber-900">
+          <p class="font-semibold mb-1">
+            Ojo: el folio {factura.numero_factura_facturapi} también lo tiene otra factura
+          </p>
+          <p class="mb-2 text-amber-800">
+            Son facturas distintas ante el SAT (cada una con su UUID). Para cobrar, guíate por cliente, fecha y monto.
+          </p>
+          <ul class="space-y-1">
+            {#each factura.foliosRepetidos as otra (otra.id)}
+              <li>
+                <button
+                  on:click={() => irAFactura(otra.id)}
+                  class="text-blue-700 hover:underline text-left"
+                >
+                  {otra.clienteRazonSocial || 'Sin cliente'} · {formatearFecha(otra.fechaEmision)} · {formatearMoneda(otra.montoTotal)}
+                </button>
+              </li>
+            {/each}
+          </ul>
+        </div>
+      {/if}
       <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <!-- Columna izquierda: COBRANZA -->
         <div class="lg:col-span-1">

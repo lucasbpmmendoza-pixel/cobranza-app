@@ -95,7 +95,7 @@ export const GET: RequestHandler = async (event) => {
       SELECT
         f.Id,
         f.ClienteId,
-        f.numero_factura,
+        COALESCE(NULLIF(f.NumeroFacturaFacturapi, ''), f.numero_factura) as numero_factura,
         f.NumeroFacturaFacturapi,
         f.MontoTotal,
         ISNULL(f.MontoTotal - ISNULL(pagos.TotalPagado, 0), f.MontoTotal) as SaldoPendiente,
@@ -159,6 +159,35 @@ export const GET: RequestHandler = async (event) => {
     }
 
     const row = result.recordset[0];
+
+    // Otras facturas vigentes con el MISMO folio real del CFDI (historial DMM con
+    // dos contadores). Se muestran para que cobranza no las confunda.
+    let foliosRepetidos: any[] = [];
+    if (row.NumeroFacturaFacturapi) {
+      const repetidasResult = await pool.request()
+        .input('Folio', sql.NVarChar(50), row.NumeroFacturaFacturapi)
+        .input('FacturaId', sql.Int, parseInt(id))
+        .input('OrganizacionId', sql.Int, parseInt(organizacionId))
+        .query(`
+          SELECT fr.Id, fr.numero_factura, fr.FechaEmision, fr.MontoTotal, fr.UUID,
+                 cr.RazonSocial
+          FROM Facturas fr
+          INNER JOIN Clientes cr ON fr.ClienteId = cr.Id
+          WHERE fr.NumeroFacturaFacturapi = @Folio
+            AND fr.Id <> @FacturaId
+            AND cr.OrganizacionId = @OrganizacionId
+            AND ISNULL(fr.estado_factura_id, 0) <> 6
+          ORDER BY fr.FechaEmision
+        `);
+      foliosRepetidos = repetidasResult.recordset.map((r: any) => ({
+        id: r.Id,
+        numeroFactura: r.numero_factura,
+        fechaEmision: r.FechaEmision,
+        montoTotal: parseFloat(r.MontoTotal) || 0,
+        uuid: r.UUID,
+        clienteRazonSocial: r.RazonSocial
+      }));
+    }
 
     // Obtener conceptos de la factura
     const conceptosQuery = `
@@ -224,6 +253,7 @@ export const GET: RequestHandler = async (event) => {
       clienteId: row.ClienteId,
       numero_factura: row.numero_factura,
       numeroFacturaFacturapi: row.NumeroFacturaFacturapi,
+      foliosRepetidos,
       montoTotal: parseFloat(row.MontoTotal) || 0,
       saldoPendiente: parseFloat(row.SaldoPendiente) || 0,
       fechaEmision: row.FechaEmision,
@@ -389,7 +419,7 @@ export const DELETE: RequestHandler = async (event) => {
       .query(`
         SELECT TOP 1
           f.Id,
-          f.numero_factura,
+          COALESCE(NULLIF(f.NumeroFacturaFacturapi, ''), f.numero_factura) as numero_factura,
           f.Timbrado,
           f.FacturapiId,
           f.UUID,

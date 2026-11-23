@@ -70,6 +70,17 @@ export interface Factura {
   id: number;
   numero_factura?: string;
   numero_factura_facturapi?: string;
+  // Otra factura vigente tiene el mismo folio real del CFDI (historial DMM)
+  folio_repetido?: boolean;
+  // En el detalle: las otras facturas vigentes con ese mismo folio
+  foliosRepetidos?: {
+    id: number;
+    numeroFactura: string;
+    fechaEmision: string;
+    montoTotal: number;
+    uuid?: string;
+    clienteRazonSocial?: string;
+  }[];
   clienteId: number;
   cliente?: ClienteFactura;
   montoTotal?: number;

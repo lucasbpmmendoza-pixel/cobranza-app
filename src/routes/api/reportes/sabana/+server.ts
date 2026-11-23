@@ -47,7 +47,7 @@ export const GET: RequestHandler = async (event) => {
 
     const facturasRes = await req().query(`
       SELECT
-        f.Id, f.ClienteId, cl.RazonSocial, cl.RFC, f.numero_factura, f.FechaEmision,
+        f.Id, f.ClienteId, cl.RazonSocial, cl.RFC, COALESCE(NULLIF(f.NumeroFacturaFacturapi, ''), f.numero_factura) as numero_factura, f.FechaEmision,
         f.MontoTotal, ISNULL(f.SaldoPendiente, f.MontoTotal) AS SaldoPendiente,
         f.Moneda, f.TipoCambio, f.FacturaOrigenId, f.RecurrenciaActiva,
         (SELECT MAX(p.FechaPago) FROM Pagos p WHERE p.FacturaId = f.Id) AS UltimoPago

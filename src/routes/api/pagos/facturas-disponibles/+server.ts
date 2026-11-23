@@ -31,7 +31,7 @@ export const GET: RequestHandler = async ({ url }) => {
     const query = `
       SELECT
         f.Id as id,
-        f.numero_factura as numeroFactura,
+        COALESCE(NULLIF(f.NumeroFacturaFacturapi, ''), f.numero_factura) as numeroFactura,
         f.MontoTotal as montoTotal,
         f.MontoTotal - ISNULL(pagos.TotalPagado, 0) as saldoPendiente,
         f.FechaEmision as fechaEmision,

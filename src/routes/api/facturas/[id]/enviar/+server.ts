@@ -39,7 +39,7 @@ export const POST: RequestHandler = async (event) => {
 		const facturaQuery = `
 			SELECT
 				f.Id,
-				f.numero_factura,
+				COALESCE(NULLIF(f.NumeroFacturaFacturapi, ''), f.numero_factura) as numero_factura,
 				f.MontoTotal,
 				f.FechaEmision,
 				f.FechaVencimiento,

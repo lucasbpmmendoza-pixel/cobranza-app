@@ -366,6 +366,7 @@
           id: f.id,
           numero_factura: f.numeroFactura,
           numero_factura_facturapi: f.numeroFacturaFacturapi,
+          folio_repetido: !!f.folioRepetido,
           clienteId: f.clienteId,
           cliente: {
             id: f.cliente.id,
@@ -866,6 +867,9 @@
                         <div class="w-4 h-4"></div>
                       {/if}
                       <span class="text-sm font-medium text-gray-600">#{factura.numero_factura_facturapi || factura.numero_factura}</span>
+                      {#if factura.folio_repetido}
+                        <span class="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-amber-100 text-amber-800 whitespace-nowrap" title="Otra factura tiene este mismo folio. Distínguela por cliente, fecha y monto.">Folio repetido</span>
+                      {/if}
                     </div>
                     <div class="text-xs text-gray-500 mt-1 ml-6">{factura.cliente?.razonSocial || 'N/A'}</div>
                   {:else}
@@ -876,6 +880,9 @@
                       >
                         #{factura.numero_factura_facturapi || factura.numero_factura}
                       </button>
+                      {#if factura.folio_repetido}
+                        <span class="px-1.5 py-0.5 text-[10px] font-semibold rounded bg-amber-100 text-amber-800 whitespace-nowrap" title="Otra factura tiene este mismo folio. Distínguela por cliente, fecha y monto.">Folio repetido</span>
+                      {/if}
                     </div>
                     <div class="text-xs text-gray-500 mt-1">{factura.cliente?.razonSocial || 'N/A'}</div>
                   {/if}

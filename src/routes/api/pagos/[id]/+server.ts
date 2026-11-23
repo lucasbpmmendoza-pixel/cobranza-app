@@ -32,7 +32,7 @@ export const GET: RequestHandler = async ({ params, url }) => {
           p.Metodo as metodo,
           p.CreatedAt as createdAt,
           p.UpdatedAt as updatedAt,
-          f.numero_factura as numero_factura,
+          COALESCE(NULLIF(f.NumeroFacturaFacturapi, ''), f.numero_factura) as numero_factura,
           f.MontoTotal as montoFactura,
           f.SaldoPendiente as saldoPendiente,
           f.FechaEmision as fechaEmision,
