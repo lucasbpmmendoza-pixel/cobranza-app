@@ -303,8 +303,11 @@ export const POST: RequestHandler = async (event) => {
       payment_form: factura.FormaPago,
       payment_method: factura.MetodoPago,
       use: factura.UsoCFDI,
-      series: serie,
-      folio_number: folio ? parseInt(folio) : undefined
+      series: serie
+      // No se manda folio_number: el consecutivo lo asigna Facturapi. Antes se
+      // forzaba el folio de la BD (MAX+1 de numero_factura), que no sabe de los
+      // folios que Facturapi ya uso (refacturaciones, timbrados por fuera), y eso
+      // desalineaba los folios. El folio real se guarda abajo en NumeroFacturaFacturapi.
     };
 
     // Si es RFC genérico, agregar nodo global (Factura Global)
@@ -316,7 +319,7 @@ export const POST: RequestHandler = async (event) => {
       };
     }
 
-    console.log(`[TIMBRADO] Serie/Folio: serie=${serie}, folio=${folio}`);
+    console.log(`[TIMBRADO] Serie: ${serie} (folio lo asigna Facturapi; numero interno=${folio})`);
     console.log(`[TIMBRADO] Payload a enviar a Facturapi:`, JSON.stringify(facturapiPayload, null, 2));
 
     // Crear factura en Facturapi usando la API key de la organización
@@ -344,7 +347,12 @@ export const POST: RequestHandler = async (event) => {
       throw facturapiErr;
     }
 
-    console.log(`[TIMBRADO] Facturapi respondió OK: id=${invoice.id}, uuid=${invoice.uuid}`);
+    // Folio real del CFDI, tal como quedó en Facturapi (Serie-Folio)
+    const numeroFacturaFacturapi = invoice.folio_number != null
+      ? (invoice.series ? `${invoice.series}-${invoice.folio_number}` : String(invoice.folio_number))
+      : null;
+
+    console.log(`[TIMBRADO] Facturapi respondió OK: id=${invoice.id}, uuid=${invoice.uuid}, folio=${numeroFacturaFacturapi}`);
 
     // Descargar PDF y XML desde Facturapi con autenticación
     const pdfUrl = `https://www.facturapi.io/v2/invoices/${invoice.id}/pdf`;
@@ -397,9 +405,25 @@ export const POST: RequestHandler = async (event) => {
              PDFUrl = ?,
              XMLUrl = ?,
              PDFBase64 = ?,
-             XMLBase64 = ?
+             XMLBase64 = ?,
+             NumeroFacturaFacturapi = ?,
+             -- El folio de la BD queda IGUAL al de Facturapi (fuente de verdad).
+             -- El número previo (MAX+1) solo era provisional mientras no se timbraba.
+             -- Si otra factura ya tiene ese número (historial desfasado), se conserva el
+             -- provisional para no duplicar; el folio real igual queda en NumeroFacturaFacturapi.
+             numero_factura = CASE
+               WHEN ? IS NOT NULL AND NOT EXISTS (
+                 SELECT 1 FROM Facturas f2 WHERE f2.numero_factura = ? AND f2.Id <> ?
+               ) THEN ?
+               ELSE numero_factura
+             END
          WHERE Id = ?`,
-        [invoice.uuid, invoice.uuid, invoice.id, pdfUrl, xmlUrl, pdfBase64, xmlBase64, facturaId]
+        [
+          invoice.uuid, invoice.uuid, invoice.id, pdfUrl, xmlUrl, pdfBase64, xmlBase64,
+          numeroFacturaFacturapi,
+          numeroFacturaFacturapi, numeroFacturaFacturapi, facturaId, numeroFacturaFacturapi,
+          facturaId
+        ]
       );
       console.log(`[TIMBRADO] Factura actualizada en BD: facturaId=${facturaId}, uuid=${invoice.uuid}`);
     } catch (dbErr: any) {
@@ -417,7 +441,7 @@ export const POST: RequestHandler = async (event) => {
 
     if (factura.ClienteEmail) {
       const nombreCliente = factura.ClienteRazonSocial;
-      const numeroFactura = factura.numero_factura;
+      const numeroFactura = numeroFacturaFacturapi || factura.numero_factura;
       const asuntoCorreo = `Factura ${numeroFactura} - ${nombreCliente}`;
       const fechaEmisionFormateada = new Date(factura.FechaEmision).toLocaleDateString('es-MX');
       const totalFormateado = `$${parseFloat(factura.MontoTotal).toFixed(2)} ${factura.Moneda || 'MXN'}`;
@@ -615,7 +639,8 @@ export const POST: RequestHandler = async (event) => {
       message: 'Factura timbrada Correctamente',
       uuid: invoice.uuid,
       facturapiId: invoice.id,
-      numeroFactura: factura.numero_factura,
+      numeroFactura: numeroFacturaFacturapi || factura.numero_factura,
+      numeroFacturaFacturapi,
       pdfUrl: pdfUrl,
       xmlUrl: xmlUrl,
       emailEnviado,
