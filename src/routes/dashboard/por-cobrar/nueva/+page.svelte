@@ -359,13 +359,19 @@
 							confirmButtonText: 'Aceptar'
 						});
 					} else {
-						// Falló el timbrado
+						// Falló el timbrado: mostrar el motivo real que regresó el servidor
+						const motivo = String(result.timbrado?.error || '')
+							.replace(/&/g, '&amp;')
+							.replace(/</g, '&lt;')
+							.replace(/>/g, '&gt;');
+						if (result.timbrado?.error) console.error('[TIMBRADO] Motivo:', result.timbrado);
 						await Swal.fire({
 							icon: 'error',
 							title: 'Falló el timbrado de su factura',
 							html: `
 								<div class="text-left">
 									<p class="mb-2">La factura se guardó correctamente pero hubo un problema al timbrarla.</p>
+									${motivo ? `<p class="mb-2 p-2 rounded bg-red-50 text-red-700 text-sm"><strong>Motivo:</strong> ${motivo}</p>` : ''}
 									<p class="text-sm text-gray-600 mt-4">Puede intentar timbrarla manualmente desde el listado de facturas</p>
 								</div>
 							`,

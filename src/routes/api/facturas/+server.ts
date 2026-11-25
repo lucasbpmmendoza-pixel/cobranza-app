@@ -687,12 +687,32 @@ export const POST: RequestHandler = async (event) => {
           body: JSON.stringify({ facturaId })
         });
 
+        const cuerpoTimbrado = await responseTimbrado.json().catch(() => null);
         if (responseTimbrado.ok) {
-          resultadoTimbrado = await responseTimbrado.json();
+          resultadoTimbrado = cuerpoTimbrado;
+        } else {
+          // Pasar al cliente el motivo real (mensaje de Facturapi o validación)
+          // en vez de un texto genérico.
+          const detalle = cuerpoTimbrado?.facturapiMessage
+            || cuerpoTimbrado?.details?.message
+            || (typeof cuerpoTimbrado?.details === 'string' ? cuerpoTimbrado.details : null)
+            || cuerpoTimbrado?.error
+            || `HTTP ${responseTimbrado.status}`;
+          resultadoTimbrado = {
+            success: false,
+            message: 'No se pudo timbrar automáticamente',
+            error: detalle,
+            facturapiStatus: cuerpoTimbrado?.facturapiStatus
+          };
         }
       } catch (errorTimbrado) {
         // Si falla el timbrado, continuar sin error (la factura ya está guardada)
         console.error('Error al timbrar factura automáticamente:', errorTimbrado);
+        resultadoTimbrado = {
+          success: false,
+          message: 'No se pudo timbrar automáticamente',
+          error: errorTimbrado instanceof Error ? errorTimbrado.message : 'Error desconocido'
+        };
       }
     }
 
