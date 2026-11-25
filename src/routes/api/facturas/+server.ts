@@ -84,10 +84,17 @@ export const GET: RequestHandler = async (event) => {
         COALESCE(NULLIF(f.NumeroFacturaFacturapi, ''), f.numero_factura) LIKE ? OR
         f.UUID LIKE ? OR
         f.UUIDFacturapi LIKE ? OR
-        f.Identificador LIKE ?
+        f.Identificador LIKE ? OR
+        EXISTS (
+          SELECT 1 FROM ConceptosFactura cfb
+          WHERE cfb.FacturaId = f.Id
+            AND (cfb.Nombre LIKE ? OR cfb.Descripcion LIKE ?)
+        )
       )`);
       const clientePattern = `%${cliente}%`;
       queryParams.push(
+        clientePattern,
+        clientePattern,
         clientePattern,
         clientePattern,
         clientePattern,
@@ -119,7 +126,8 @@ export const GET: RequestHandler = async (event) => {
     }
 
     if (fechaFin) {
-      whereConditions.push('f.FechaEmision <= ?');
+      // Incluir todo el día final aunque FechaEmision traiga hora
+      whereConditions.push('f.FechaEmision < DATEADD(day, 1, CAST(? AS date))');
       queryParams.push(fechaFin);
     }
 

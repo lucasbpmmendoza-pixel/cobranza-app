@@ -50,7 +50,17 @@
 
   function getRangoFechas(periodo: string): { fechaInicio?: string; fechaFin?: string } {
     const hoy = new Date();
-    const formato = (d: Date) => d.toISOString().split('T')[0];
+    // Fecha local (toISOString pasaría a UTC y movería el día en la tarde)
+    const formato = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    if (periodo.startsWith('m:')) {
+      // Mes específico, p. ej. "m:2026-10"
+      const [anio, mes] = periodo.slice(2).split('-').map(Number);
+      return {
+        fechaInicio: formato(new Date(anio, mes - 1, 1)),
+        fechaFin: formato(new Date(anio, mes, 0))
+      };
+    }
     if (periodo === 'hoy') {
       return { fechaInicio: formato(hoy), fechaFin: formato(hoy) };
     } else if (periodo === 'semana') {
@@ -66,6 +76,23 @@
     }
     return {};
   }
+
+  // Meses disponibles para filtrar: desde dic 2025 (inicio de datos) hasta el mes actual
+  const NOMBRES_MES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+  const mesesDisponibles: { value: string; label: string }[] = (() => {
+    const lista: { value: string; label: string }[] = [];
+    const hoy = new Date();
+    const d = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+    const limite = new Date(2025, 11, 1);
+    while (d >= limite) {
+      lista.push({
+        value: `m:${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`,
+        label: `${NOMBRES_MES[d.getMonth()]} ${d.getFullYear()}`
+      });
+      d.setMonth(d.getMonth() - 1);
+    }
+    return lista;
+  })();
 
   // Selección masiva
   let facturasSeleccionadas: Set<number> = new Set();
@@ -648,6 +675,11 @@
           <option value="semana">Esta semana</option>
           <option value="mes">Este mes</option>
           <option value="trimestre">Este trimestre</option>
+          <optgroup label="Por mes">
+            {#each mesesDisponibles as m}
+              <option value={m.value}>{m.label}</option>
+            {/each}
+          </optgroup>
         </select>
 
         <!-- Botón Filtros -->

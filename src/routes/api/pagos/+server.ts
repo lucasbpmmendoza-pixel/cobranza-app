@@ -36,7 +36,12 @@ export const GET: RequestHandler = async ({ url }) => {
           COALESCE(NULLIF(f.NumeroFacturaFacturapi, ''), f.numero_factura) LIKE @cliente OR
           f.UUID LIKE @cliente OR
           f.UUIDFacturapi LIKE @cliente OR
-          CAST(p.Id AS VARCHAR) LIKE @cliente
+          CAST(p.Id AS VARCHAR) LIKE @cliente OR
+          EXISTS (
+            SELECT 1 FROM ConceptosFactura cfb
+            WHERE cfb.FacturaId = f.Id
+              AND (cfb.Nombre LIKE @cliente OR cfb.Descripcion LIKE @cliente)
+          )
         )
       `;
     }
