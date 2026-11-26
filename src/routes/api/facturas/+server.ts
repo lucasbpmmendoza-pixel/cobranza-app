@@ -77,6 +77,30 @@ export const GET: RequestHandler = async (event) => {
 
     // Agregar filtros dinámicamente
     if (cliente) {
+      const clientePattern = `%${cliente}%`;
+
+      // Facturas cuyo concepto coincide (p. ej. el cliente final de Retana).
+      // Se busca UNA sola vez aquí y luego se filtra por Id: meter el EXISTS en
+      // el WHERE hacía que las 3 queries (lista, conteo, aging) revisaran los
+      // conceptos de cada factura y la función se pasaba del tiempo límite.
+      const coincidenConcepto = await db.query(
+        `SELECT DISTINCT TOP 2000 cf.FacturaId
+         FROM ConceptosFactura cf
+         INNER JOIN Facturas fc ON fc.Id = cf.FacturaId
+         INNER JOIN Clientes cc ON cc.Id = fc.ClienteId
+         WHERE cc.OrganizacionId = ?
+           AND fc.FechaEmision >= ?
+           AND (cf.Nombre LIKE ? OR cf.Descripcion LIKE ?)`,
+        [organizacionId, '2025-12-01', clientePattern, clientePattern]
+      );
+      // Ids numéricos que vienen de la BD: seguros para ir directo en la query
+      const idsConcepto = coincidenConcepto
+        .map((r: any) => Number(r.FacturaId))
+        .filter((n: number) => Number.isInteger(n));
+      const condicionConcepto = idsConcepto.length
+        ? ` OR f.Id IN (${idsConcepto.join(',')})`
+        : '';
+
       whereConditions.push(`(
         c.RazonSocial LIKE ? OR
         c.NombreComercial LIKE ? OR
@@ -84,17 +108,9 @@ export const GET: RequestHandler = async (event) => {
         COALESCE(NULLIF(f.NumeroFacturaFacturapi, ''), f.numero_factura) LIKE ? OR
         f.UUID LIKE ? OR
         f.UUIDFacturapi LIKE ? OR
-        f.Identificador LIKE ? OR
-        EXISTS (
-          SELECT 1 FROM ConceptosFactura cfb
-          WHERE cfb.FacturaId = f.Id
-            AND (cfb.Nombre LIKE ? OR cfb.Descripcion LIKE ?)
-        )
+        f.Identificador LIKE ?${condicionConcepto}
       )`);
-      const clientePattern = `%${cliente}%`;
       queryParams.push(
-        clientePattern,
-        clientePattern,
         clientePattern,
         clientePattern,
         clientePattern,

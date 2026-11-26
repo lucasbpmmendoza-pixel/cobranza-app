@@ -28,6 +28,29 @@ export const GET: RequestHandler = async ({ url }) => {
     // Construir WHERE clause con filtro obligatorio de organización
     let whereClause = 'WHERE cl.OrganizacionId = @organizacionId AND p.FechaPago >= @fechaBase';
     if (cliente) {
+      // Facturas cuyo concepto coincide: se buscan una sola vez y se filtra por
+      // Id (un EXISTS en el WHERE revisaba conceptos fila por fila y era lento).
+      const conceptoResult = await pool.request()
+        .input('organizacionId', organizacionId)
+        .input('fechaBase', '2025-12-01')
+        .input('cliente', `%${cliente}%`)
+        .query(`
+          SELECT DISTINCT TOP 2000 cf.FacturaId
+          FROM ConceptosFactura cf
+          INNER JOIN Facturas fc ON fc.Id = cf.FacturaId
+          INNER JOIN Clientes cc ON cc.Id = fc.ClienteId
+          WHERE cc.OrganizacionId = @organizacionId
+            AND fc.FechaEmision >= @fechaBase
+            AND (cf.Nombre LIKE @cliente OR cf.Descripcion LIKE @cliente)
+        `);
+      // Ids numéricos que vienen de la BD: seguros para ir directo en la query
+      const idsConcepto = (conceptoResult.recordset || [])
+        .map((r: any) => Number(r.FacturaId))
+        .filter((n: number) => Number.isInteger(n));
+      const condicionConcepto = idsConcepto.length
+        ? ` OR f.Id IN (${idsConcepto.join(',')})`
+        : '';
+
       whereClause += `
         AND (
           cl.RazonSocial LIKE @cliente OR
@@ -36,12 +59,7 @@ export const GET: RequestHandler = async ({ url }) => {
           COALESCE(NULLIF(f.NumeroFacturaFacturapi, ''), f.numero_factura) LIKE @cliente OR
           f.UUID LIKE @cliente OR
           f.UUIDFacturapi LIKE @cliente OR
-          CAST(p.Id AS VARCHAR) LIKE @cliente OR
-          EXISTS (
-            SELECT 1 FROM ConceptosFactura cfb
-            WHERE cfb.FacturaId = f.Id
-              AND (cfb.Nombre LIKE @cliente OR cfb.Descripcion LIKE @cliente)
-          )
+          CAST(p.Id AS VARCHAR) LIKE @cliente${condicionConcepto}
         )
       `;
     }
